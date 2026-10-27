@@ -1,0 +1,4 @@
+interface:
+  display_name: "Work Toward a Goal"
+  short_description: "Plan and complete an RSS engineering goal autonomously"
+  default_prompt: "Use $work-toward-a-goal to turn this RoboSimStudio goal into a reviewed blueprint and implement it through validated integration."

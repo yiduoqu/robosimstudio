@@ -1,0 +1,4 @@
+interface:
+  display_name: "Squeeze a Bug"
+  short_description: "Diagnose and fix RSS bugs with controlled experiments"
+  default_prompt: "Use $squeeze-a-bug to investigate and fix the requested RoboSimStudio bug autonomously, recording hypotheses and validating them against runtime evidence."

@@ -1,0 +1,201 @@
+{
+  "schema_version": "hag4r-agentic-gpt-staged-material-inference-v1",
+  "image_path": "/media/eric/data/HAG4R/outputs/agentic_asset_refinement/mesh_fidelity_clawhauser_20260802/revisions/revision_0000/omnipart/clawhauser/mesh_combined_part_labels_top.png",
+  "processed_image_path": "/media/eric/data/HAG4R/outputs/agentic_asset_refinement/mesh_fidelity_clawhauser_20260802/revisions/revision_0000/segmentation/clawhauser/clawhauser_white_bg.png",
+  "part_colors_path": "/media/eric/data/HAG4R/outputs/agentic_asset_refinement/mesh_fidelity_clawhauser_20260802/revisions/revision_0000/omnipart/clawhauser/part_labels.npz",
+  "num_parts": 3,
+  "inferred_object_name": "pale yellow plush cat keychain",
+  "geometry_inference": {
+    "inferred_object_name": "pale yellow plush cat keychain",
+    "predictions": [
+      {
+        "attachment_pattern": "single upper attachment beneath the dominant body",
+        "geometric_category": "curved tapered solid appendage",
+        "geometry_description": "Medium-size smoothly curved pendant tail below the body, broad near its upper attachment and narrowing to a rounded tip; finite thickness appears in front, back, and side views.",
+        "part_color_rgb": [
+          141.0,
+          211.0,
+          199.0
+        ],
+        "part_index": 0,
+        "relative_size": "medium"
+      },
+      {
+        "attachment_pattern": "central main body; supports the tail below and the connector-loop assembly above",
+        "geometric_category": "rounded compact body",
+        "geometry_description": "Dominant broad rounded plush character head/body with two small ear-like protrusions and substantial extent in all six views.",
+        "part_color_rgb": [
+          255.0,
+          255.0,
+          179.0
+        ],
+        "part_index": 1,
+        "relative_size": "dominant"
+      },
+      {
+        "attachment_pattern": "loop-and-clasp assembly attached centrally to the top of the main body",
+        "geometric_category": "closed flexible loop with compact clasp",
+        "geometry_description": "Small upright teardrop-shaped closed loop with a clear central opening, narrow finite cross-section, and a compact lower clasp/connector above the body.",
+        "part_color_rgb": [
+          190.0,
+          186.0,
+          218.0
+        ],
+        "part_index": 2,
+        "relative_size": "small"
+      }
+    ]
+  },
+  "fill_mode_decision": {
+    "schema_version": "hag4r-material-fill-mode-decision-v1",
+    "inferred_object_name": "pale yellow plush cat keychain",
+    "predictions": [
+      {
+        "fill_mode_evidence": [
+          "compact high-coverage silhouette across front, back, and side views",
+          "closed tapered appendage attached only at its upper end"
+        ],
+        "fill_mode_rationale": "The tail is visibly stuffed, bulky, and closed rather than a thin hollow shell, so a filled volume preserves its intended soft bulk.",
+        "part_color_rgb": [
+          141.0,
+          211.0,
+          199.0
+        ],
+        "part_index": 0,
+        "volume_fill_mode": "solid_fill"
+      },
+      {
+        "fill_mode_evidence": [
+          "large compact silhouette in all six views",
+          "substantial width and depth in top, bottom, and side views"
+        ],
+        "fill_mode_rationale": "The dominant plush head/body is a rounded stuffed volume with no opening or thin wall indicated, so it should become a filled deformable mass.",
+        "part_color_rgb": [
+          255.0,
+          255.0,
+          179.0
+        ],
+        "part_index": 1,
+        "volume_fill_mode": "solid_fill"
+      },
+      {
+        "fill_mode_evidence": [
+          "closed loop silhouette with a clear central hole",
+          "narrow but finite-width loop and clasp geometry in front, back, and side views"
+        ],
+        "fill_mode_rationale": "The hanging loop is modeled as a solid elastomer cord/strap with an intentional central opening; filling its finite cross-section does not fill the opening.",
+        "part_color_rgb": [
+          190.0,
+          186.0,
+          218.0
+        ],
+        "part_index": 2,
+        "volume_fill_mode": "solid_fill"
+      }
+    ]
+  },
+  "geometry_stage_notes": [],
+  "fill_mode_stage_notes": [],
+  "semantics_stage_notes": [],
+  "stage_attempts": {
+    "geometry": [
+      {
+        "attempt_index": 1,
+        "error": "",
+        "stage": "part_geometry",
+        "status": "success"
+      }
+    ],
+    "fill_mode": [
+      {
+        "attempt_index": 1,
+        "error": "",
+        "stage": "fill_mode",
+        "status": "success"
+      }
+    ],
+    "semantics": [
+      {
+        "attempt_index": 1,
+        "error": "",
+        "stage": "constitutive_parameters",
+        "status": "success"
+      }
+    ],
+    "repair": [
+      {
+        "error": "",
+        "stage": "material_validation",
+        "status": "success"
+      }
+    ]
+  },
+  "predictions": [
+    {
+      "density_kg_m3": 300,
+      "friction_coefficient": 0.8,
+      "major_material_name": "polyester plush textile with fiber fill",
+      "part_color_rgb": [
+        141.0,
+        211.0,
+        199.0
+      ],
+      "part_index": 0,
+      "part_name": "stuffed_plush_tail",
+      "part_semantics": "soft curved stuffed tail attached below the character body and intended to bend under contact; profile=polyester_plush_composite; tuple density_kg_m3=300, youngs_modulus_pa=500000, poisson_ratio=0.45, friction_coefficient=0.8",
+      "part_texture": "short fuzzy pale-yellow plush pile with a darker brown fabric tip",
+      "poisson_ratio": 0.45,
+      "youngs_modulus_pa": 500000,
+      "volume_fill_mode": "solid_fill",
+      "fill_mode_rationale": "The tail is visibly stuffed, bulky, and closed rather than a thin hollow shell, so a filled volume preserves its intended soft bulk.",
+      "fill_mode_evidence": [
+        "compact high-coverage silhouette across front, back, and side views",
+        "closed tapered appendage attached only at its upper end"
+      ]
+    },
+    {
+      "density_kg_m3": 300,
+      "friction_coefficient": 0.8,
+      "major_material_name": "polyester plush textile with fiber fill",
+      "part_color_rgb": [
+        255.0,
+        255.0,
+        179.0
+      ],
+      "part_index": 1,
+      "part_name": "stuffed_plush_character_body",
+      "part_semantics": "dominant rounded stuffed character head/body that is compliant under grasping and contact; profile=polyester_plush_composite; tuple density_kg_m3=300, youngs_modulus_pa=500000, poisson_ratio=0.45, friction_coefficient=0.8",
+      "part_texture": "soft fuzzy pale-yellow plush fabric with embroidered and appliqued facial details",
+      "poisson_ratio": 0.45,
+      "youngs_modulus_pa": 500000,
+      "volume_fill_mode": "solid_fill",
+      "fill_mode_rationale": "The dominant plush head/body is a rounded stuffed volume with no opening or thin wall indicated, so it should become a filled deformable mass.",
+      "fill_mode_evidence": [
+        "large compact silhouette in all six views",
+        "substantial width and depth in top, bottom, and side views"
+      ]
+    },
+    {
+      "density_kg_m3": 1100,
+      "friction_coefficient": 0.9,
+      "major_material_name": "thermoplastic elastomer rubber",
+      "part_color_rgb": [
+        190.0,
+        186.0,
+        218.0
+      ],
+      "part_index": 2,
+      "part_name": "flexible_hanging_loop_and_clasp",
+      "part_semantics": "elastic polymer hanging loop and compact connector used to suspend the plush keychain; profile=rubber_flexible; tuple density_kg_m3=1100, youngs_modulus_pa=5000000, poisson_ratio=0.49, friction_coefficient=0.9",
+      "part_texture": "smooth slightly glossy pale-yellow molded elastomer",
+      "poisson_ratio": 0.49,
+      "youngs_modulus_pa": 5000000,
+      "volume_fill_mode": "solid_fill",
+      "fill_mode_rationale": "The hanging loop is modeled as a solid elastomer cord/strap with an intentional central opening; filling its finite cross-section does not fill the opening.",
+      "fill_mode_evidence": [
+        "closed loop silhouette with a clear central hole",
+        "narrow but finite-width loop and clasp geometry in front, back, and side views"
+      ]
+    }
+  ]
+}

@@ -149,6 +149,7 @@ def _pipeline_factory(ctx: CouplerBuild, pairs: np.ndarray | None, *, particles:
             "soft_contact_gap": float(collision.soft_contact_margin),
             "enable_rigid_soft_full_surface_contact": bool(collision.full_surface_contact),
             "contact_matching": matching,
+            "deterministic": bool(collision.deterministic),
         }
         if explicit:
             kwargs["broad_phase"] = "explicit"
@@ -184,6 +185,9 @@ def build_proxy(ctx: CouplerBuild) -> Any:
     relaxation = float(params.get("proxy_relaxation", 1.0))
     relaxation_mode = str(params.get("proxy_relaxation_mode", "fixed"))
     proxy_joints = bool(params.get("proxy_joints", False))
+    joint_types = (
+        ctx.model.joint_type.numpy() if proxy_joints and ctx.model.joint_count else np.empty(0, dtype=np.int32)
+    )
 
     by_name = {island.name: island for island in ctx.islands}
     proxies = []
@@ -206,7 +210,14 @@ def build_proxy(ctx: CouplerBuild) -> Any:
                 source=channel.source,
                 destination=channel.destination,
                 bodies=[int(b) for b in channel.bodies],
-                joints=[int(j) for j in channel.joints] if proxy_joints else (),
+                # A floating root adds no constraint to mirror. Keep its body
+                # proxy, and let Newton validate every remaining constrained
+                # joint (including unsupported types or missing parents).
+                joints=(
+                    [int(j) for j in channel.joints if joint_types[j] != int(newton.JointType.FREE)]
+                    if proxy_joints
+                    else ()
+                ),
                 mass_scale=scale,
                 mode=mode,
                 proxy_relaxation=relaxation,
@@ -573,6 +584,7 @@ def build_one_way(ctx: CouplerBuild) -> Any:
     kwargs: dict[str, Any] = {
         "soft_contact_gap": float(collision.soft_contact_margin),
         "enable_rigid_soft_full_surface_contact": bool(collision.full_surface_contact),
+        "deterministic": bool(collision.deterministic),
     }
     if collision.contact_matching != "disabled":
         kwargs["contact_matching"] = collision.contact_matching

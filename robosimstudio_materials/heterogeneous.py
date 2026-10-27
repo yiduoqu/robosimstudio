@@ -8,7 +8,8 @@ The current implementation requires a Newton particle solver (VBD in the example
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
@@ -104,8 +105,13 @@ def load_labelled_tets(mesh_path: str | Path, params_path: str | Path) -> tuple[
 class HeterogeneousSoftSpec:
     """Paths and placement for a single connected labelled FEM object.
 
-    `pose` places the source mesh origin in the work-surface frame. Young's
-    modulus, Poisson ratio, and density come exclusively from `params_path`.
+    `pose` places the source mesh origin in the work-surface frame. Material
+    estimates come from `params_path`; density always retains its source value.
+    `material_overrides` optionally changes Young's modulus, Poisson ratio or
+    absolute damping for individual part IDs, without modifying source arrays.
+    Its supported keys are `youngs_modulus_pa`, `poisson_ratio`, `damping_pa_s`.
+    By default damping is SOURCE Young's modulus times `damping_time`, in Pa s,
+    so an elasticity override alone does not also change dissipation.
     `damping_time` is a solver setting in seconds, not a source material estimate.
     """
 
@@ -119,6 +125,7 @@ class HeterogeneousSoftSpec:
     quat: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     scale: float = 1.0
     damping_time: float = 0.0005
+    material_overrides: dict[int, dict[str, float]] = field(default_factory=dict)
     particle_radius: float = 0.0007
     contact_ke: float = 30000.0
     contact_kd: float = 25.0
@@ -130,8 +137,30 @@ class HeterogeneousSoftSpec:
     def __post_init__(self) -> None:
         if not self.mesh_path or not self.params_path or not self.materials_path:
             raise ValueError("heterogeneous soft body needs mesh, parameter, and material paths")
-        if self.scale <= 0 or self.damping_time < 0 or self.particle_radius <= 0:
+        if (
+            not np.isfinite((self.scale, self.damping_time, self.particle_radius)).all()
+            or self.scale <= 0
+            or self.damping_time < 0
+            or self.particle_radius <= 0
+        ):
             raise ValueError("scale and particle radius must be positive; damping time cannot be negative")
+        if not isinstance(self.material_overrides, Mapping):
+            raise ValueError("material_overrides must map integer part IDs to material fields")
+        allowed = {"youngs_modulus_pa", "poisson_ratio", "damping_pa_s"}
+        for part_id, values in self.material_overrides.items():
+            if not isinstance(part_id, int) or isinstance(part_id, bool) or not isinstance(values, Mapping):
+                raise ValueError("material_overrides must map integer part IDs to material fields")
+            if unknown := set(values) - allowed:
+                raise ValueError(f"part {part_id}: unknown material override fields {sorted(map(str, unknown))}")
+            for name, value in values.items():
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
+                    raise ValueError(f"part {part_id}: {name} must be a finite number")
+                if (
+                    (name == "youngs_modulus_pa" and value <= 0)
+                    or (name == "poisson_ratio" and not 0 <= value < 0.5)
+                    or (name == "damping_pa_s" and value < 0)
+                ):
+                    raise ValueError(f"part {part_id}: invalid {name}={value}")
 
 
 @register_entity("heterogeneous_soft")
@@ -176,7 +205,19 @@ class EntityHeterogeneousSoft(ParticleMixin, Entity):
             if not np.allclose(actual, expected, rtol=1e-6, atol=0):
                 raise ValueError(f"{spec.materials_path}: part {part_id} disagrees with the per-tet arrays")
 
-        young, nu = elastic.T
+        if unknown := set(spec.material_overrides) - set(parts):
+            raise ValueError(f"{spec.name}: unknown material override part IDs {sorted(unknown)}")
+        effective_elastic = elastic.copy()
+        effective_damping = elastic[:, 0] * spec.damping_time
+        for part_id, values in spec.material_overrides.items():
+            rows = labels == part_id
+            for column, name in enumerate(("youngs_modulus_pa", "poisson_ratio")):
+                if name in values:
+                    effective_elastic[rows, column] = values[name]
+            if "damping_pa_s" in values:
+                effective_damping[rows] = values["damping_pa_s"]
+
+        young, nu = effective_elastic.T
         mu = young / (2.0 * (1.0 + nu))
         lam = young * nu / ((1.0 + nu) * (1.0 - 2.0 * nu))
         volume = np.linalg.det(vertices[tets[:, 1:]] - vertices[tets[:, :1]]) * spec.scale**3 / 6.0
@@ -213,7 +254,7 @@ class EntityHeterogeneousSoft(ParticleMixin, Entity):
             density=1.0,
             k_mu=mu,
             k_lambda=lam,
-            k_damp=young * spec.damping_time,
+            k_damp=effective_damping,
             particle_radius=spec.particle_radius,
             color=colors,
             label=spec.name,
@@ -227,6 +268,8 @@ class EntityHeterogeneousSoft(ParticleMixin, Entity):
         self.source_vertices = vertices
         self.source_tets = tets
         self.source_elastic = elastic
+        self.effective_elastic = effective_elastic
+        self.effective_damping = effective_damping
         self.source_density = density
         self.source_mass = masses
 

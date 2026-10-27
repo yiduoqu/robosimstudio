@@ -32,7 +32,9 @@ tree that carries the rope and in one that does not.
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from typing import Any
+from unittest import mock
 
 import newton
 import numpy as np
@@ -40,7 +42,15 @@ import warp as wp
 
 from robosimstudio.scene.physics import CompositionError, build_graph, compose
 from robosimstudio.scene.physics.islands import partition
-from robosimstudio.specs import ArrangementSpec, PhysicsManifest, SimRequirements, backend, contacts_with, coupler
+from robosimstudio.specs import (
+    ArrangementSpec,
+    CollisionSpec,
+    PhysicsManifest,
+    SimRequirements,
+    backend,
+    contacts_with,
+    coupler,
+)
 from robosimstudio.specs.physics import DOMAINS, register_backend, register_coupler, register_domain
 
 TIER = "fast"
@@ -316,8 +326,12 @@ class TestComposingAWholeScene(unittest.TestCase):
         field that does not survive the trip is a field a bundle silently drops."""
         import json
 
-        program = self._scene(ArrangementSpec(backends=(("*", backend("mujoco")),)), particles=0)
+        program = self._scene(
+            ArrangementSpec(backends=(("*", backend("mujoco")),), collision=CollisionSpec(deterministic=True)),
+            particles=0,
+        )
         node = json.loads(json.dumps(program.manifest.to_dict()))
+        self.assertIs(node["arrangement"]["collision"]["deterministic"], True)
         self.assertEqual(PhysicsManifest.from_dict(node), program.manifest)
 
     def test_the_manifest_records_the_effective_parameters(self):
@@ -328,6 +342,86 @@ class TestComposingAWholeScene(unittest.TestCase):
         params = dict(program.manifest.islands[0].backend.params)
         self.assertEqual(params["njmax"], 99)
         self.assertEqual(params["jacobian"], "sparse", "the alias's own default, recorded rather than implied")
+
+
+class TestFloatingProxyMechanism(unittest.TestCase):
+    """Keep internal slider constraints without proxying the unconstrained root."""
+
+    def test_floating_root_selection_preserves_constraints_and_native_errors(self):
+        for unsupported in (False, True):
+            with self.subTest(unsupported_d6=unsupported):
+                builder = newton.ModelBuilder()
+                bodies = []
+                for name in ("carrier", "left_finger", "right_finger"):
+                    body = builder.add_link(
+                        xform=wp.transform(wp.vec3(0.0, 0.0, 1.0), wp.quat_identity()),
+                        mass=1.0,
+                        label=name,
+                    )
+                    builder.add_shape_box(body, hx=0.01, hy=0.01, hz=0.01)
+                    bodies.append(body)
+                joints = [builder.add_joint_free(child=bodies[0], label="carrier_free")]
+                for finger, name in zip(bodies[1:], ("left_slide", "right_slide"), strict=True):
+                    if unsupported and name == "right_slide":
+                        joint = builder.add_joint_d6(
+                            parent=bodies[0],
+                            child=finger,
+                            linear_axes=[newton.ModelBuilder.JointDofConfig(axis=newton.Axis.X)],
+                            label=name,
+                        )
+                    else:
+                        joint = builder.add_joint_prismatic(
+                            parent=bodies[0], child=finger, axis=newton.Axis.X, label=name
+                        )
+                    joints.append(joint)
+                builder.add_articulation(joints)
+                builder.add_cloth_grid(
+                    pos=wp.vec3(0.0, 0.0, 1.1),
+                    rot=wp.quat_identity(),
+                    vel=wp.vec3(0.0),
+                    dim_x=1,
+                    dim_y=1,
+                    cell_x=0.01,
+                    cell_y=0.01,
+                    mass=0.01,
+                )
+                builder.color()
+                model = builder.finalize(device="cpu")
+                parts = {
+                    "gripper": _Entity(
+                        "gripper",
+                        SimRequirements(domain="rigid", contacts=contacts_with("deformables")),
+                        range=_Range(bodies=(0, 3), shapes=(0, 3), joints=(0, 3)),
+                    ),
+                    "sheet": _Entity(
+                        "sheet",
+                        SimRequirements(domain="cloth", contacts=contacts_with("objects")),
+                        range=_Range(particles=(0, model.particle_count)),
+                    ),
+                }
+                arrangement = ArrangementSpec(
+                    backends=(("rigid", backend("featherstone")), ("cloth", backend("vbd", iterations=1))),
+                    coupling=coupler("proxy", proxy_joints=True, mode="lagged"),
+                )
+                if unsupported:
+                    with self.assertRaisesRegex(ValueError, "Unsupported proxy source joint type D6"):
+                        compose(model, parts, None, arrangement)
+                    continue
+                program = compose(model, parts, None, arrangement)
+                source = program.view_for("gripper")
+                destination = program.view_for("sheet")
+                for view in (source, destination):
+                    self.assertTrue({"carrier", "left_finger", "right_finger"}.issubset(view.body_label))
+                    for label in ("left_slide", "right_slide"):
+                        index = list(view.joint_label).index(label)
+                        self.assertTrue(view.joint_enabled.numpy()[index], label)
+                        self.assertEqual(view.joint_type.numpy()[index], int(newton.JointType.PRISMATIC))
+                root = list(source.joint_label).index("carrier_free")
+                self.assertTrue(source.joint_enabled.numpy()[root])
+                self.assertEqual(source.joint_type.numpy()[root], int(newton.JointType.FREE))
+                if "carrier_free" in destination.joint_label:
+                    root = list(destination.joint_label).index("carrier_free")
+                    self.assertFalse(destination.joint_enabled.numpy()[root])
 
 
 class TestRoutingCoversEveryWorld(unittest.TestCase):
@@ -497,6 +591,57 @@ class TestExtensibility(unittest.TestCase):
         with self.assertRaises(CompositionError) as caught:
             compose(model, parts, arm, arrangement)
         self.assertIn("nothing_builds_this", str(caught.exception))
+
+
+class TestCollisionPipelineDeterminism(unittest.TestCase):
+    """The public native ordering flag reaches every pipeline builder."""
+
+    def test_main_pipeline_receives_the_flag_and_its_default(self):
+        class PipelineReached(Exception):
+            pass
+
+        model = _model(bodies=1, shapes=2)
+        parts = {
+            "box": _Entity(
+                "box", SimRequirements(domain="rigid"), range=_Range(bodies=(0, 1), shapes=(0, 1), joints=(0, 1))
+            ),
+            "table": _Entity("table", TABLE, range=_Range(shapes=(1, 2))),
+        }
+        for collision in (CollisionSpec(), CollisionSpec(deterministic=True)):
+            with self.subTest(deterministic=collision.deterministic):
+                arrangement = ArrangementSpec(backends=(("*", backend("xpbd")),), collision=collision)
+                with mock.patch.object(newton, "CollisionPipeline", side_effect=PipelineReached) as constructor:
+                    with self.assertRaises(PipelineReached):
+                        compose(model, parts, None, arrangement)
+                self.assertIs(constructor.call_args.kwargs["deterministic"], collision.deterministic)
+
+    def test_channel_and_one_way_pipelines_receive_the_flag(self):
+        from robosimstudio.scene.physics import couplers
+
+        for collision in (CollisionSpec(), CollisionSpec(deterministic=True)):
+            with self.subTest(deterministic=collision.deterministic):
+                ctx = SimpleNamespace(
+                    collision=collision,
+                    spec=coupler("one_way"),
+                    model=object(),
+                    islands=[
+                        SimpleNamespace(name="rigid", is_deformable=False, backend=backend("xpbd")),
+                        SimpleNamespace(
+                            name="soft", is_deformable=True, backend=backend("vbd"), particles=np.arange(1)
+                        ),
+                    ],
+                )
+                pipeline = object()
+                with mock.patch.object(newton, "CollisionPipeline", return_value=pipeline) as constructor:
+                    self.assertIs(couplers._pipeline_factory(ctx, None)(object()), pipeline)
+                    self.assertIs(constructor.call_args.kwargs["deterministic"], collision.deterministic)
+                    constructor.reset_mock()
+                    with (
+                        mock.patch.object(couplers, "build_solver", return_value=object()),
+                        mock.patch.object(couplers, "SolverOneWay", return_value=object()),
+                    ):
+                        couplers.build_one_way(ctx)
+                    self.assertIs(constructor.call_args.kwargs["deterministic"], collision.deterministic)
 
 
 class TestIslandCapabilitiesAreRegisteredFacts(unittest.TestCase):

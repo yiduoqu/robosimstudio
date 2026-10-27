@@ -170,6 +170,9 @@ class CollisionSpec:
         contact_matching: Frame-to-frame contact matching for the main
             pipeline -- ``"disabled"``, ``"latest"`` or ``"sticky"``.
             ``"latest"`` is load-bearing for a rod that rolls.
+        deterministic: Sort native collision records deterministically. Allocates
+            the required scratch at pipeline construction; defaults to False.
+            This controls contact ordering, independently of solver reductions.
         broad_phase: Broad phase of the main pipeline when the composer routes
             it an explicit pair list; the list is the broad phase, so
             ``"explicit"`` is the honest default.
@@ -179,6 +182,7 @@ class CollisionSpec:
         default=0.008, metadata=ui(tier=RECAPTURE, unit="m", range=(1.0e-4, 5.0e-2), group="soft contact")
     )
     full_surface_contact: bool = field(default=False, metadata=ui(tier=REBUILD, group="soft contact"))
+    deterministic: bool = field(default=False, metadata=ui(tier=REBUILD, group="buffers"))
     force_sdf: bool = field(default=False, metadata=ui(tier=REBUILD, group="soft contact"))
     rigid_gap: float | None = field(default=None, metadata=ui(tier=REBUILD, unit="m", group="rigid contact"))
     contact_ke: float | None = field(

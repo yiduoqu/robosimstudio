@@ -743,6 +743,7 @@ def compose(
             "soft_contact_gap": float(spec.soft_contact_margin),
             "enable_rigid_soft_full_surface_contact": bool(spec.full_surface_contact),
             "contact_matching": spec.contact_matching,
+            "deterministic": bool(spec.deterministic),
         }
         if spec.rigid_contact_max > 0:
             model.rigid_contact_max = int(spec.rigid_contact_max)

@@ -1,7 +1,7 @@
 # Clawhauser loop pick and place
 
 `clawhauser_pick_place.py` builds an RSS scene with one labelled tetrahedral
-Clawhauser, a bench, and two scripted kinematic fingers. The fingers pinch its
+Clawhauser, a bench, and two dynamic fingers with bounded target-following forces. The fingers pinch its
 loop by Newton contact, lift it, move it 180 mm across the table, lower it,
 release it, and withdraw. There are no particle-body attachments or scripted
 object transforms. The mesh remains one face-connected, part-labelled FEM
@@ -35,15 +35,22 @@ needs `imageio-ffmpeg` there for video output.
 
 The output contains state arrays, per-frame diagnostics, a manifest, and a
 result summary. The `overview.mp4` video is written when rendering is enabled.
-The example runs at 30 Hz with 20 Newton substeps and 12 VBD iterations per
-substep. Its success check requires bilateral loop contact during transit,
-clearance over the table, placement near the target, no finger contact after
-release, a supported and stable final body, and no inverted tetrahedra in the
-settled interval. It also reports the peak transient inversion count and
-requires it to stay below 0.2% of the source elements. Inspect the recorded
-positions, contacts, and video as well as the result summary: this is an
-initial contact-manipulation scene, not a claim that every intermediate FEM
-element remains inversion-free.
+The example runs at 30 Hz with configurable Newton substeps and VBD iterations.
+The current optimization is **not yet accepted**: lift retention and deformation
+still fail in the recorded trials. Success requires sustained bilateral loaded
+contact, at least 50 mm transport clearance, final XY error within 20 mm, actual
+support and release, at most 5 mm final drift, and no inverted/nonfinite elements
+at instrumented physics substeps. Frame samples alone do not establish mesh
+integrity. The ongoing plan and evidence are in
+`.agents/plans/PLAN_clawhauser_pick_place_optimization.md` and
+`.agents/reports/BUG_FIX_clawhauser_pick_place_quality.md`.
+
+The floating fingers now expose target buffers and resettable trajectories. Each
+finger has a 5 N default applied force norm limit, including its gravity
+compensation, and a separately bounded orientation torque. These actuator limits
+do not impose a hard instantaneous contact-force limit. Diagnostic profiles are
+passed with `--config`; source tetrahedra, labels, densities and material estimates
+remain intact. Rendering and detailed diagnostics are outside backend timings.
 
 ## AIRBOT Play arm variant
 
@@ -66,8 +73,8 @@ python "$rss_root/examples/10_heterogeneous/airbot_play_pick_place.py" \
 The default 390 steps record 13 seconds at 30 fps. `diagnostics.json` reports
 arm pose, joint positions, per-side loop contacts and tetrahedral integrity at
 each frame; `result.json` scores actual lift, transfer, release and settling.
-Shorten `--steps` for a smoke run. The baseline script above remains the
-verified contact-grasp reference while the AIRBOT arm variant is tuned. The
+Shorten `--steps` for a smoke run. Both scripts remain under physics validation; neither is an accepted
+contact-grasp reference. The
 current full AIRBOT recording under `outputs/clawhauser/airbot_play_final/`
 shows the arm reaching, closing and moving, but `result.json` reports
 `success: false`: the loop slips off the fingertips during lift and remains at

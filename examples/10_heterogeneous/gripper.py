@@ -153,6 +153,11 @@ class ScriptedGripperSpec:
     angular_kd: float = 0.0005
     gravity_compensation: bool = True
     pad_half_width: float = 0.020
+    pad_half_thickness: float = 0.003
+    """Half-extent along the closing axis: the pad face sits this far inboard.
+
+    A scene that states its closing gap from a measured width has to know it.
+    """
     ledge: bool = True
     center: tuple[float, float, float] = (0.0, 0.0, 0.02)
     half_gap: float = 0.015
@@ -178,6 +183,7 @@ class ScriptedGripperSpec:
             self.substeps,
             self.duration,
             self.pad_half_width,
+            self.pad_half_thickness,
         )
         gains = (self.linear_ke, self.linear_kd, self.angular_ke, self.angular_kd)
         if not all(np.isfinite(v) and v > 0 for v in positive):
@@ -202,7 +208,11 @@ class ScriptedGripper(rss.Entity):
         # Explicit solid-finger envelope inertia: the pads are collision shapes,
         # not the body's mass, so a dynamic finger is exactly as heavy as the
         # mass the drive's gravity compensation and clamp talk about.
-        hx, hy, hz = (0.006 if spec.ledge else 0.003), spec.pad_half_width, (0.008 if spec.ledge else 0.006)
+        hx, hy, hz = (
+            (0.006 if spec.ledge else spec.pad_half_thickness),
+            spec.pad_half_width,
+            (0.008 if spec.ledge else 0.006),
+        )
         inertia = np.diag(np.array((hy * hy + hz * hz, hx * hx + hz * hz, hx * hx + hy * hy)) * spec.finger_mass / 3)
         for side in (-1, 1):
             pos = self.center + np.array([side * spec.half_gap, 0.0, 0.0])
@@ -216,7 +226,7 @@ class ScriptedGripper(rss.Entity):
             )
             shape = builder.add_shape_box(
                 body,
-                hx=0.003,
+                hx=spec.pad_half_thickness,
                 hy=spec.pad_half_width,
                 hz=0.006,
                 cfg=cfg,

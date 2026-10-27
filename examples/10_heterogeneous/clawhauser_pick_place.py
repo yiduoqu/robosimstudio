@@ -243,8 +243,13 @@ def run(out: Path, *, steps: int, render_every: int = 0):
 
     np.savez_compressed(out / "states.npz", particle_q=np.asarray(positions), body_q=np.asarray(body_poses))
     (out / "diagnostics.json").write_text(json.dumps(diagnostics, indent=2) + "\n")
+    # A staged Newton -- an rsync'd source tree, which is how the cluster runs
+    # it -- is not a git checkout, and an absent commit is not a failed run.
     newton_root = Path(newton.__file__).resolve().parents[1]
-    newton_commit = subprocess.check_output(["git", "-C", str(newton_root), "rev-parse", "HEAD"], text=True).strip()
+    try:
+        newton_commit = subprocess.check_output(["git", "-C", str(newton_root), "rev-parse", "HEAD"], text=True).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        newton_commit = f"unknown ({newton_root} is not a git checkout)"
     manifest = {
         "asset": "clawhauser",
         "newton_version": newton.__version__,

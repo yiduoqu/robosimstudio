@@ -260,8 +260,14 @@ class _TranslationBlock:
             raise ValueError("all particles must have positive finite mass")
         if np.any(flags != 1) or not np.allclose(mass * inv_mass, 1):
             raise ValueError("all particles must be active, unpinned and have consistent inverse mass")
-        source_worlds = model.particle_world.numpy()
-        worlds = source_worlds.copy()
+        source_worlds = model.particle_world
+        if source_worlds is None:
+            # A single-system builder allocates no world array at all: there is
+            # exactly one world, which is the case this block is for.
+            worlds = np.zeros(len(mass), dtype=int)
+            source_worlds = worlds
+        else:
+            worlds = source_worlds.numpy()
         if np.all(worlds == -1):
             # Newton's nonreplicated builder stores a single global system as
             # world -1; this block owns that one object as its sole reduction.

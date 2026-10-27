@@ -32,14 +32,30 @@ TIER = "medium"
 
 
 def tet_model(*tets: tuple[int, int, int, int], pinned: int | None = None):
-    """One small stiff tet volume on ``cuda:0``, for the block's own checks."""
+    """Small stiff tet volumes on ``cuda:0``, for the block's own checks.
+
+    Each tet gets its own four corners, at least a millimetre apart and off the
+    plane of each other: a colinear or flat set is a zero-volume element, which
+    Newton warns about and drops, leaving a model the block refuses for having
+    no volume at all instead of for the reason under test.
+    """
+    corners = np.array(
+        [[0.0, 0.0, 0.0], [0.0012, 0.0, 0.0], [0.0004, 0.0009, 0.0], [0.0005, 0.0004, 0.0011]]
+    )
     builder = newton.ModelBuilder()
-    for corner in range(4 * len(tets)):
-        builder.add_particle(pos=(0.001 * corner, 0.0, 0.8), vel=(0.0, 0.0, 0.0), mass=0.001)
+    for index in range(len(tets)):
+        for corner in corners:
+            position = corner + np.array([0.004 * index, 0.0, 0.8])
+            builder.add_particle(pos=tuple(position), vel=(0.0, 0.0, 0.0), mass=0.001)
     if pinned is not None:
         builder.particle_flags[pinned] = builder.particle_flags[pinned] & ~int(newton.ParticleFlags.ACTIVE)
     for tet in tets:
         builder.add_tetrahedron(*tet, k_mu=5.0e5, k_lambda=5.0e6, k_damp=0.0)
+    # Newton's own VBD requires particle colour groups, and it checks that inside
+    # the solver's constructor -- which the block calls before its own checks, so
+    # an uncoloured model would refuse for the wrong reason and never reach the
+    # budget refusal this module exists to pin down.
+    builder.color()
     return builder.finalize(device="cuda:0")
 
 

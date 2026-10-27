@@ -35,6 +35,11 @@ Controls, for contrast rather than for the result:
     --claw kinematic   prescribed poses: unlimited jaw authority
     --no-coarse        stock VBD: no common-translation solve under load
 
+Knobs, each reported with its measured effect:
+
+    --rod-radius   radius of the rod the loop is threaded onto [m]
+    --mu           the pipeline's single global soft-contact friction coefficient
+
 Run on a CUDA node with Newton 1.8 development and RoboSimStudio on PYTHONPATH.
 """
 
@@ -196,7 +201,7 @@ SOURCE_HASHES = {
 }
 
 
-def build_scene(*, coarse: bool, claw: str):
+def build_scene(*, coarse: bool, claw: str, rod_radius: float = ROD_RADIUS, mu: float | None = None):
     for relative, expected in SOURCE_HASHES.items():
         actual = hashlib.sha256((ASSET / relative).read_bytes()).hexdigest()
         if actual != expected:
@@ -221,7 +226,7 @@ def build_scene(*, coarse: bool, claw: str):
     # base 1 mm over the bench top; that origin is what the rod is aimed at.
     pose = (SOURCE_X, float(hole[2]), -base + 0.001)
     hole_height = float(hole[1] - base)
-    seat_drop = ring["hole_inradius"] - ROD_RADIUS
+    seat_drop = ring["hole_inradius"] - rod_radius
     rod_z = seat_drop + hole_height + CLEARANCE
     # Where the hole's centre sits when the toy hangs on the rod, and how far
     # above that the slide runs. Both are about the hole's centre, so the lift
@@ -248,8 +253,9 @@ def build_scene(*, coarse: bool, claw: str):
         # Threaded well inboard of the free end, not merely past it: a build that
         # left 21 mm of engagement had the loop walk along the rod and off the
         # tip during the seat -- 20 mm of it, measured -- and lose the rod.
-        "slide_m": ROD_FREE_Y + ROD_RADIUS + ring["loop_half_thickness"] + 0.030 - ring_plane_y,
-        "engagement_m": ROD_RADIUS + ring["loop_half_thickness"] + 0.030,
+        "slide_m": ROD_FREE_Y + rod_radius + ring["loop_half_thickness"] + 0.030 - ring_plane_y,
+        "engagement_m": rod_radius + ring["loop_half_thickness"] + 0.030,
+        "rod_radius_m": rod_radius,
         "seat_z_m": seat_height,
         "thread_z_m": thread_height,
         "thread_lift_m": THREAD_LIFT,
@@ -295,7 +301,7 @@ def build_scene(*, coarse: bool, claw: str):
     rod = scene.add(
         rss.post(
             name="rod",
-            radius=ROD_RADIUS,
+            radius=rod_radius,
             half_height=span / 2.0,
             # A quarter turn about x lays the cylinder's own z axis along y.
             at=(rod_x, ROD_FREE_Y + span / 2.0, rod_z, -np.sin(np.pi / 4.0), 0.0, 0.0, np.cos(np.pi / 4.0)),
@@ -350,6 +356,10 @@ def build_scene(*, coarse: bool, claw: str):
         raise RuntimeError("RSS lost Clawhauser tetrahedra or part labels")
     if sim.model.attachment_particle_body_count:
         raise RuntimeError("the contact grasp scene must not contain particle attachments")
+    if mu is not None:
+        # Newton VBD exposes one global soft-contact friction coefficient; this is
+        # it, and here it is the knob the sweep turns.
+        sim.model.soft_contact_mu = float(mu)
     if abs(float(grip.entity.center[2]) - (TABLE_Z + geometry["grip_z_m"])) > 1.0e-6:
         raise RuntimeError(
             f"the claw sits at z={grip.entity.center[2]:.4f} and the hole's centre at "
@@ -450,9 +460,20 @@ def newton_commit() -> str:
         return f"unknown ({root} is not a git checkout)"
 
 
-def run(out: Path, *, steps: int, render_every: int = 0, coarse: bool = True, claw: str = "dynamic") -> dict:
+def run(
+    out: Path,
+    *,
+    steps: int,
+    render_every: int = 0,
+    coarse: bool = True,
+    claw: str = "dynamic",
+    rod_radius: float = ROD_RADIUS,
+    mu: float | None = None,
+) -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    sim, obj, grip, camera, rod, ring, geometry = build_scene(coarse=coarse, claw=claw)
+    sim, obj, grip, camera, rod, ring, geometry = build_scene(
+        coarse=coarse, claw=claw, rod_radius=rod_radius, mu=mu
+    )
     entity = obj.entity
     particles = entity.particles
     tets = entity.source_tets
@@ -683,8 +704,18 @@ def main() -> None:
     parser.add_argument("--render-every", type=int, default=0)
     parser.add_argument("--claw", choices=("dynamic", "kinematic"), default="dynamic")
     parser.add_argument("--no-coarse", dest="coarse", action="store_false")
+    parser.add_argument("--rod-radius", type=float, default=ROD_RADIUS, help="rod radius [m]")
+    parser.add_argument("--mu", type=float, default=None, help="global soft-contact friction coefficient")
     args = parser.parse_args()
-    run(args.out, steps=args.steps, render_every=args.render_every, coarse=args.coarse, claw=args.claw)
+    run(
+        args.out,
+        steps=args.steps,
+        render_every=args.render_every,
+        coarse=args.coarse,
+        claw=args.claw,
+        rod_radius=args.rod_radius,
+        mu=args.mu,
+    )
 
 
 if __name__ == "__main__":

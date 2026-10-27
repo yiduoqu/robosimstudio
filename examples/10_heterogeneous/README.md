@@ -45,6 +45,83 @@ positions, contacts, and video as well as the result summary: this is an
 initial contact-manipulation scene, not a claim that every intermediate FEM
 element remains inversion-free.
 
+## The rod and the container: two scenes for a force-bounded claw
+
+`clawhauser_on_rod.py` and `clawhauser_stuff_into_bottle.py` put the same
+labelled FEM volume through grasps whose force is bounded by the claw rather
+than by the script: the fingers carry their own mass and are driven by a clamped
+PD wrench (5 N, 0.03 N·m), so `peak_force_n` and `peak_torque_nm` are
+measurements, not consequences of prescribed motion. Both derive their geometry
+from the mesh -- the loop's hole centre and inradius by an inscribed-circle fixed
+point over the loop's vertices, the loop's width in the closing direction from
+that same plane, the tail's centre and extent from its own part labels -- and
+both print the geometry the motion was built on.
+
+| Scene | What it asks | What it measured |
+|---|---|---|
+| `clawhauser_on_rod.py` | pinch the loop's sides, lift, thread the rod's free end through the hole, seat the toy on the rod, open, withdraw | the rod carries the toy: 1.205-1.213 N of its 1.227 N weight with the jaws open, 28.6-28.9 mm of bench clearance, peak jaw force 4.47 N of the 5 N cap, peak torque 0.015 N·m, min tet J 0.82, no inverted tetrahedra, three identical runs |
+| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 60 mm bore, lower it tail first, stop when it jams on the rim, open, withdraw | it jams: 64.7 mm of insertion, a third of the volume inside the bore, still wedged after the jaws open, 25.3 mm of bench clearance, peak jaw force at the 5 N cap, min tet J 0.48, no inverted tetrahedra |
+
+Each scene takes the same controls and knobs, all of them reported with their
+measured effect:
+
+```bash
+python examples/10_heterogeneous/clawhauser_on_rod.py  --out OUT --render-every 3            # or: --claw kinematic, --no-coarse, --rod-radius R, --mu MU
+python examples/10_heterogeneous/clawhauser_stuff_into_bottle.py --out OUT --render-every 3 # or: --claw kinematic, --no-coarse, --bore R, --cap N, --mu MU
+```
+
+Both use the qualified pair of the coarse common-translation solve: detection
+gap 20 mm and a 5 mm per-substep correction budget, with `SolverVBDCoarse` on
+the soft, rigid and wildcard backends, 12 VBD iterations, 20 substeps at 30 Hz,
+`soft_contact_margin` 20 mm, `contact_ke` 1e5, `contact_kd` 25, self-contact off.
+The scenes' own outputs are `diagnostics.json` (per frame: contact counts and
+loads, penetration, per-part minimum J and inversions, claw wrench, finger
+poses), `result.json` (the gates and the measurements they rest on) and
+`overview.mp4`.
+
+### Knobs, with their measured effect
+
+| Scene | Knob | Value | Outcome |
+|---|---|---|---|
+| rod | `--rod-radius` | 4 mm | threads; the rod carries 1.124 N of the toy's 1.227 N (91.6%) |
+| rod | `--rod-radius` | 6 mm (default) | threads; 1.205 N (98.2%) |
+| rod | `--rod-radius` | 10 mm | threads; 1.218 N (99.3%) |
+| bottle | `--bore` | 50 mm | fails: the 47 mm tail fouls the bore, 6.1% of the volume inside, mesh crushed at the jam |
+| bottle | `--bore` | 60 mm (default) | jams on the rim: 64.7 mm deep, 32.7% inside, wedged |
+| bottle | `--bore` | 70 mm | jams as intended: 67.9 mm deep, 35.1% inside, wedged |
+| bottle | `--cap` | 2.5 N | jams at 66.1 mm with 34.1% inside, wedged -- the same depth as 5 N at half the effort |
+| both | `--mu` | 0.3 | fails: the pinch cannot hold. Scene A never seats the toy (rod support 0.000 N); Scene B never gets it off the bench (depth 0.0) |
+| both | `--mu` | 0.9 (default) | as tabulated above |
+
+The distance between the two friction rows is the honest cost of Newton VBD
+exposing a single global soft-contact coefficient: at 0.3 the loop slides out of
+the pads before either scene's task starts.
+
+### Observed limits
+
+1. **The corrector is not optional.** Stock VBD at the same substeps and
+   iterations mangles this volume within 0.1 s of it standing on the bench:
+   minimum J −2.72 with 1489 inverted tet-substeps and 1.1 mm of penetration,
+   the same numbers in both scenes, while the qualified pair holds min J ≥ 0.48
+   and 4.9e-5 m of penetration. Both scenes report the plain-VBD control
+   (`--no-coarse`) rather than asserting this.
+2. **A bounded pinch cannot hold a round cord for long.** Carrying the toy by
+   the loop alone, the cord creeps out of a 5 N squeeze in about two seconds of
+   load: finger contacts 6, 4, 3, 1, 0 over 2.6-4.6 s, with the toy back on the
+   bench before the carry. Scene A never meets this because the rod takes the
+   toy's weight within 2 s of the load coming on; Scene B needs the 2.4 mm
+   ledges under its pads, after which what holds the toy is form closure on the
+   shelves rather than friction on a cord.
+3. **The claws' footprint bounds the task.** Pads clamping the 110 mm body sit
+   104 mm apart -- wider than the 60 mm bore they would have to follow the toy
+   into -- and a grip on the tail (46.9 by 36.1 mm, and the part that goes in
+   first) hangs the body *above* the pinch, where two flat faces cannot resist
+   the moment: the toy tipped 60 degrees and left the jaws by t = 3.6 s. Both
+   are recorded as deviations in `.agents/plans/BLUEPRINT_heterogeneous_scenes.md`.
+4. **The clamp is applied in float32**, so a run that sits on it reports the
+   cap's own representation: `peak_force_n` 5.0000005 against a float64 5.0. The
+   gates allow one part in a million for that, and nothing more.
+
 ## AIRBOT Play arm variant
 
 `airbot_play_pick_place.py` imports the six-joint AIRBOT Play arm and parallel

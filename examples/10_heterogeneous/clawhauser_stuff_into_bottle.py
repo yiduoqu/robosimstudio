@@ -402,8 +402,14 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         raise RuntimeError("Newton FEM elasticity differs from the source estimates")
     if not np.allclose(sim.model.particle_mass.numpy()[entity.particles], entity.source_mass, rtol=1e-5):
         raise RuntimeError("Newton nodal mass differs from source per-tet densities")
-    glass_shapes = np.concatenate([np.asarray(part.shapes, dtype=np.int32) for part in glass])
-    return sim, obj, grip, camera, ring, glass_shapes, geometry
+    # The shapes, not the entity ranges: a range ends one past its last shape, and
+    # that extra id belongs to the next entity. Counting contacts by the range put
+    # the toy's proxy in the container and read every pad-toy press contact as a
+    # pad-container hit (measured: 110 at the press, 4 with the pads still 100 mm
+    # above the rim).
+    glass_bodies = np.concatenate([np.asarray(part.bodies, dtype=np.int32) for part in glass])
+    glass_shapes = np.flatnonzero(np.isin(sim.model.shape_body.numpy(), glass_bodies)).astype(np.int32)
+    return sim, obj, grip, camera, ring, glass_shapes, glass_bodies, geometry
 
 
 def waypoints(grip, capacity: int, dt: float, geometry: dict) -> np.ndarray:
@@ -542,7 +548,7 @@ def run(
     mu: float | None = None,
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    sim, obj, grip, camera, ring, glass_shapes, geometry = build_scene(
+    sim, obj, grip, camera, ring, glass_shapes, glass_bodies, geometry = build_scene(
         coarse=coarse, bore=bore, cap=cap, push_cap=push_cap, mu=mu
     )
     entity = obj.entity
@@ -597,6 +603,8 @@ def run(
     diagnostics = []
     jam_frame = None
     press_frame = None
+    shape_body = sim.model.shape_body.numpy()
+    finger_bodies = np.asarray(grip.entity.bodies, dtype=np.int32)
     body_contact_seen = False
     jam_streak = 0
     depth_best = 0.0
@@ -630,14 +638,41 @@ def run(
             finger_local = finger_local[(finger_local >= 0) & (finger_local < len(part_of_particle))]
             body_contacts = int(np.count_nonzero(part_of_particle[finger_local] == 1))
             rigid_count = int(contacts.rigid_contact_count.numpy()[0])
-            rigid0 = contacts.rigid_contact_shape0.numpy()[: min(rigid_count, contacts.rigid_contact_max)]
-            rigid1 = contacts.rigid_contact_shape1.numpy()[: min(rigid_count, contacts.rigid_contact_max)]
-            pads_in_glass = int(
-                np.count_nonzero(
-                    np.isin(rigid0, grip.entity.finger_shapes) & np.isin(rigid1, glass_shapes)
-                    | np.isin(rigid1, grip.entity.finger_shapes) & np.isin(rigid0, glass_shapes)
+            rigid_max = min(rigid_count, contacts.rigid_contact_max)
+            rigid0 = contacts.rigid_contact_shape0.numpy()[:rigid_max]
+            rigid1 = contacts.rigid_contact_shape1.numpy()[:rigid_max]
+            body0, body1 = shape_body[rigid0], shape_body[rigid1]
+            finger0, finger1 = np.isin(body0, finger_bodies), np.isin(body1, finger_bodies)
+            container0, container1 = np.isin(body0, glass_bodies), np.isin(body1, glass_bodies)
+            pad_container = (finger0 & container1) | (finger1 & container0)
+            pad_other = (finger0 & ~container1) | (finger1 & ~container0)
+            normal = contacts.rigid_contact_normal.numpy()[:rigid_max]
+            point0 = contacts.rigid_contact_point0.numpy()[:rigid_max]
+            point1 = contacts.rigid_contact_point1.numpy()[:rigid_max]
+            # The witness points are separated for a near contact and overlapped for
+            # a penetrating one; only the latter is a hit on the container.
+            gap = np.einsum("ij,ij->i", point1 - point0, normal)
+            pads_in_glass = int(np.count_nonzero(pad_container & (gap <= 1.0e-6)))
+            pads_near_glass = int(np.count_nonzero(pad_container))
+            finger_other = int(np.count_nonzero(pad_other))
+            detail = []
+            for index in np.flatnonzero(pad_container)[:8]:
+                point = 0.5 * (point0[index] + point1[index])
+                radius = float(np.linalg.norm(point[:2] - axis))
+                detail.append(
+                    {
+                        "pad_side": 0 if finger0[index] else 1,
+                        "pad_body": int(body0[index] if finger0[index] else body1[index]),
+                        "container_body": int(body1[index] if finger0[index] else body0[index]),
+                        "gap_m": float(gap[index]),
+                        "penetrating": bool(gap[index] <= 1.0e-6),
+                        "point_m": [float(v) for v in point],
+                        "radius_m": radius,
+                        "wall_gap_m": float(bore - radius),
+                        "over_rim_m": float(point[2] - rim),
+                    }
                 )
-            )
+            other_bodies = sorted({int(body1[i]) if finger0[i] else int(body0[i]) for i in np.flatnonzero(pad_other)[:8]})
             # What is inside: below the rim, and within the container's own bore
             # radius of its axis. The two are reported separately because a toy
             # resting on the rim is below the rim at its tail and beside the bore
@@ -664,6 +699,10 @@ def run(
                 "body_contacts": body_contacts,
                 "container_contacts": int(np.count_nonzero(in_glass & touching)),
                 "finger_container_contacts": pads_in_glass,
+                "finger_container_near": pads_near_glass,
+                "finger_other_contacts": finger_other,
+                "finger_other_bodies": other_bodies,
+                "finger_container_detail": detail,
                 "max_penetration_m": float(depth.max()) if depth.size else 0.0,
                 "finger_positions": [[float(v) for v in body_q[b][:3]] for b in grip.entity.bodies],
                 "carrier_pose": [float(v) for v in body_q[grip.entity.carrier_body]],
@@ -893,6 +932,12 @@ def judge(
         "max_finger_contacts": max(row["finger_contacts"] for row in diagnostics),
         "max_container_contacts": max(row["container_contacts"] for row in diagnostics),
         "max_finger_container_contacts": max(row["finger_container_contacts"] for row in diagnostics),
+        "max_finger_container_near": max(row["finger_container_near"] for row in diagnostics),
+        "max_finger_other_contacts": max(row["finger_other_contacts"] for row in diagnostics),
+        "finger_container_detail": next(
+            (row["finger_container_detail"] for row in diagnostics if row["finger_container_detail"]), []
+        ),
+        "finger_other_bodies": next((row["finger_other_bodies"] for row in diagnostics if row["finger_other_bodies"]), []),
         "max_inverted_tetrahedra": max(row["inverted_tetrahedra"] for row in diagnostics),
         "settled_inverted_tetrahedra": max(row["inverted_tetrahedra"] for row in settled),
         "quality": quality_read,

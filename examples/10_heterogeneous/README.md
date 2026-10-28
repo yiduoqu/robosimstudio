@@ -45,110 +45,99 @@ positions, contacts, and video as well as the result summary: this is an
 initial contact-manipulation scene, not a claim that every intermediate FEM
 element remains inversion-free.
 
-## The rod and the container: two scenes for a force-bounded claw
+## The rod and the container: two scenes for a parallel claw
 
-`clawhauser_on_rod.py` and `clawhauser_stuff_into_bottle.py` put the same
-labelled FEM volume through grasps whose force is bounded by the claw rather
-than by the script: the fingers carry their own mass and are driven by a clamped
-PD wrench. Closing uses `force_limit` (5 N, 0.03 N·m); pressing uses
-`push_force_limit` (50 N, 0.5 N·m), selected by the claw's own press state, so
-`peak_force_n` / `peak_torque_nm` are the grasp peaks and `peak_push_force_n` /
-`peak_push_torque_nm` the press peaks -- measurements, not consequences of
-prescribed motion. Both derive their geometry
-from the mesh -- the loop's hole centre and inradius by an inscribed-circle fixed
-point over the loop's vertices, the loop's width in the closing direction from
-that same plane, the tail's centre and extent from its own part labels -- and
-both print the geometry the motion was built on.
+`clawhauser_on_rod.py` and `clawhauser_stuff_into_bottle.py` build the same
+parallel claw: a level 120 x 30 x 18 mm carrier, two 10 x 12 x 30 mm finger
+posts on native prismatic slides, and 6 x 12 x 12 mm pad inserts on the posts'
+inner ends. The pads cannot rotate, and there is no ledge: the pad face and its
+friction are the only grip aids. The jaws close under a 5 N clamp; the carrier
+is the press path under a separate 50 N clamp, so `peak_force_n` is the jaw peak
+and `peak_push_force_n` the press peak. The toy's self-contact is on (2 mm
+margin, 6 mm rest-shape exclusion), and the coarse common-translation solve
+stays the pipeline's weight fix. Both scenes print and record the self-contact
+state, and both refuse particle-body attachments.
+
+The rod and the container, their geometry derived from the mesh (loop hole
+centre and inradius, loop width in the closing direction, tail centre and
+extent), and the measured outcomes:
 
 | Scene | What it asks | What it measured |
 |---|---|---|
-| `clawhauser_on_rod.py` | pinch the loop's sides, lift, thread the rod's free end through the hole, seat the toy on the rod, open, withdraw | the rod carries the toy: 1.205-1.213 N of its 1.227 N weight with the jaws open, 28.6-28.9 mm of bench clearance, peak jaw force 4.47 N of the 5 N cap, peak torque 0.015 N·m, min tet J 0.82, no inverted tetrahedra, three identical runs |
-| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, chase the body with the open pads, press down, open, withdraw | the one clean press is the 12 mm pad at 8 mm: 85.4 mm of insertion (to the floor), 45.5% of the volume inside, one pad at 12.2 N, min tet J 0.19, no inverted tetrahedra, 1 of 4 repeats. The 40 mm face at 8 mm loads both pads (14.94 / 14.30 N) and crushes the body (min J -1.08, 2156 inverted tet-substeps); at 4 mm it drives both pads (21.4 / 13.7 N), pushes the toy 10.4 mm, then expels it (0.5% inside, on the bench; min J -0.94, 1326 inverted). The 12 mm both-pad press also crushes (5.67 / 10.2 N, min J -1.05). The 90 mm control inserts 78.8 mm but crushes on its first contact frame (6.36 N, 173 inverted) |
+| `clawhauser_on_rod.py` | pinch the loop's sides, lift, thread the rod's free end through the hole, seat the toy on the rod, open, withdraw | 3 of 3: seated at frame 150, rod carries 1.156-1.189 N of the 1.227 N toy with the jaws open, 31.5-34.0 mm of bench clearance, peak jaw 4.19-4.22 / 4.68-4.69 N under the 5 N clamp, 4.7e-5 m penetration, 0 inverted tets |
+| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, let gravity settle it, land the pads on the body's top, press the body under 50 N, hold, open, withdraw | the body press: 77.3 mm of insertion, 45.4% of the volume inside, 62 frames of body contact, 11 body particles at the peak, 6.90 N push peak, 0 pad-container contacts, wedged after release, `success: true`; the padded body's local tet minimum is 0.268 with no inverted tets |
 
-Each scene takes the same controls and knobs, all of them reported with their
-measured effect:
+Run either scene the same way as the baseline, with `--render-every 3` for the
+video. The cup needs `--mu 2.0`: at 0.9 the 12 mm pads lose the loop during the
+carry (finger contacts 5, 4, 3, 1, 0 over 2.6-4.6 s and the toy on the bench).
 
 ```bash
-python examples/10_heterogeneous/clawhauser_on_rod.py  --out OUT --render-every 3            # or: --claw kinematic, --no-coarse, --rod-radius R, --mu MU
-python examples/10_heterogeneous/clawhauser_stuff_into_bottle.py --out OUT --render-every 3 # or: --claw kinematic, --no-coarse, --bore R, --cap N, --push-cap N, --mu MU
+python examples/10_heterogeneous/clawhauser_on_rod.py  --out OUT --render-every 3
+python examples/10_heterogeneous/clawhauser_stuff_into_bottle.py --out OUT --render-every 3 --mu 2.0
 ```
 
-Both use the qualified pair of the coarse common-translation solve: detection
-gap 20 mm and a 5 mm per-substep correction budget, with `SolverVBDCoarse` on
-the soft, rigid and wildcard backends, 12 VBD iterations, 20 substeps at 30 Hz,
-`soft_contact_margin` 20 mm, `contact_ke` 1e5, `contact_kd` 25, self-contact off.
-The scenes' own outputs are `diagnostics.json` (per frame: contact counts and
-loads, penetration, per-part minimum J and inversions, claw wrench, finger
-poses), `result.json` (the gates and the measurements they rest on) and
-`overview.mp4`.
+Controls and knobs, each reported with its measured effect:
 
-### Knobs, with their measured effect
+- `--no-coarse`: stock VBD, no common-translation solve. It cannot balance the
+  volume's weight; the toy is on the bench from the first frames.
+- `--bore`: the container's inner radius [m]. 50 mm (100 mm across) with the
+  110 mm body; 90 mm was measured to expel the toy off the bench, 110/120 mm
+  inverted its rim tets. 100 mm is the default.
+- `--mu`: the pipeline's single global soft friction coefficient. 0.9 for the
+  rod; 2.0 for the cup's loop grip.
+- `--cap` / `--push-cap`: the jaw closing clamp and the carrier push clamp [N].
+  The jaws never exceed 5 N; the press is bounded by 50 N and measured 6.90 N on
+  this body.
+- `--rod-radius`: 6 mm; the rod carries the toy at 1.16-1.19 N.
 
-| Scene | Knob | Value | Outcome |
-|---|---|---|---|
-| rod | `--rod-radius` | 4 mm | threads; the rod carries 1.124 N of the toy's 1.227 N (91.6%) |
-| rod | `--rod-radius` | 6 mm (default) | threads; 1.205 N (98.2%) |
-| rod | `--rod-radius` | 10 mm | threads; 1.218 N (99.3%) |
-| bottle | `--bore` | 50 mm | fails: the 47 mm tail fouls the bore, 6.1% of the volume inside, mesh crushed at the jam |
-| bottle | `--bore` | 60 mm | 65.7 mm deep, 33.6% inside, wedged; the press slides off the loop |
-| bottle | `--bore` | 66 / 72 / 80 mm | 67.8 / 69.6 / 74.7 mm deep, 34.9 / 35.9 / 39.7% inside, wedged |
-| bottle | `--bore` | 90 mm | fails on the body press: 78.8 mm, 6.36 N on one contact frame, min J -0.09, 173 inverted tet-substeps, refused |
-| bottle | `--bore` | 100 mm (default) | 12 mm pad, 8 mm press: 85.4 mm, 45.5% inside, 1 of 4 clean (one pad 12.2 N, min J 0.19); 40 mm pad, 8 mm: both pads 14.9/14.3 N, min J -1.08, refused; 40 mm pad, 4 mm: both 21.4/13.7 N, toy expelled, min J -0.94, refused; 12 mm both-pad, 8 mm: 5.67/10.2 N, min J -1.05, refused |
-| bottle | `--push-cap` | 50 N (default) | the press peaks at 5.7-21.4 N, so the clamp bounds the press but is never what it reaches on this body; the closing clamp stays at 5 N |
-| bottle | `--cap` | 2.5 / 5 / 10 / 15 / 25 N | at 60 mm with the old pinch press: 65.7 / 65.7 / 66.4 / 53.9 (crushed) / 65.8 mm -- past 5 N the clamp is not the limiter, the loop slides out of the 12 mm pads |
-| both | `--mu` | 0.3 | fails: the pinch cannot hold. Scene A never seats the toy (rod support 0.000 N); Scene B never gets it off the bench (depth 0.0) |
-| both | `--mu` | 0.9 (default) | as tabulated above |
+The cup flow: close on the loop, carry over the 100 mm bore, descend tail first,
+stop on the guarded stall, open to 68 mm and hold still for 0.5 s while gravity
+seats the toy, approach the body's top at 30 mm/s, then press with the carrier
+until 40 mm or the 50 N clamp. The first contact with a **body** particle (part
+1, not the loop) is the press handover; a run with no body contact is refused.
+The 68 mm opening puts the finger post's outer face at 47 mm in the 50 mm bore;
+an 80 mm opening reached 53 mm and was refused on `rim-blocks-pads` after 88
+frames of wall contact. The pads land on the body's shoulders at 34 mm each
+side, clear of the loop.
 
-The distance between the two friction rows is the honest cost of Newton VBD
-exposing a single global soft-contact coefficient: at 0.3 the loop slides out of
-the pads before either scene's task starts.
+`result.json` records `press_travel_m`, `press_contact_frames`,
+`max_body_contacts`, `peak_push_force_n`, `max_insertion_depth_m`,
+`max_inside_fraction`, `local_inversion`, `self_contact` and `stop_reason`.
+The pad-container test is by body and by penetration: `max_finger_container_contacts`
+counts a pad-to-container contact only when the witness points overlap, while
+`max_finger_container_near` counts the margin contacts and
+`max_finger_other_contacts` counts pad contacts with anything else (the toy's own
+proxy, not the cup). `finger_container_detail` gives the pad body, gap and world
+point for the first container contacts. `diagnostics.json` records the per-frame
+contact counts (including `body_contacts` and `finger_container_contacts`),
+per-part minimum J and inversions, penetration, jaw and carrier wrenches, and the
+pad positions.
 
 ### Observed limits
 
 1. **The corrector is not optional.** Stock VBD at the same substeps and
-   iterations mangles this volume within 0.1 s of it standing on the bench:
-   minimum J −2.72 with 1489 inverted tet-substeps and 1.1 mm of penetration,
-   the same numbers in both scenes, while the qualified pair holds min J ≥ 0.48
-   and 4.9e-5 m of penetration. Both scenes report the plain-VBD control
-   (`--no-coarse`) rather than asserting this.
-2. **A flat pad cannot hold a round cord; the 2.4 mm ledge is load-bearing.**
-   Flat prisms were measured at 8 mm squeeze and mu 2.0: the loop rides 87-95 mm
-   down the grip during the carry, the toy falls into the cup, and the fingers
-   end above the body with nothing to press. With the ledge and the 100 mm bore
-   the carry holds often enough to reach the press, but the pads touch the body
-   for only 3-38 frames before it yields. Scene A never needs the ledge because
-   the rod takes the toy's weight within 2 s of the load coming on.
-3. **The claws' footprint bounds the task.** Pads clamping the 110 mm body sit
-   104 mm apart -- wider than any of these bores -- so the body is pressed, not
-   gripped: after the stall the jaws release and their bottoms push its
-   shoulders. A grip on the tail (46.9 by 36.1 mm, and the part that goes in
-   first) hangs the body *above* the pinch, where two flat faces cannot resist
-   the moment: the toy tipped 60 degrees and left the jaws by t = 3.6 s. Both
-   are recorded as deviations in `.agents/plans/BLUEPRINT_heterogeneous_scenes.md`.
-
-4. **The claw has the archived carrier.** A 120 x 30 x 18 mm kinematic block
-   follows the fingers' midpoint 45 mm above them, as in
-   `yiduo/archive-clawhauser-backend-20261027`'s `parallel_gripper.py`. It is a
-   body, not a third drive axis; the pads are 6 x 40 x 16 mm prisms, the
-   archive's face across the pad and the measured 6 x 12 x 16 in Scene A.
-
-5. **The both-pad body press is at the mesh's limit at this bore.** The local
-   WSL runs at 1.67-1.70 s/frame (450 steps, 12.5 min) re-centred the claw on
-   the measured body centre and loaded both pads: 12 mm, 8 mm press -- 5.67 /
-   10.2 N, min J -1.05; 40 mm, 8 mm -- 14.94 / 14.30 N, min J -1.08; 40 mm,
-   4 mm -- 21.4 / 13.7 N, min J -0.94, toy expelled to the bench (0.5% inside).
-   All three are refused on inverted body tets; none is a one-off, so the
-   both-pad press is not made clean by the re-centre, the archive's 40 mm face,
-   or a shorter press. The only clean press measured is the 12 mm one-pad at
-   8 mm (p2: 12.2 N, min J 0.19, 85.4 mm, 1 of 4 repeats); its stored result
-   predates the 0.1 s contact gate, which the current gate would pass. The exact
-   limit is geometric: the body is 110 mm wide in a 100 mm bore, so the 4-8 mm
-   downward press drives its rim tets past J -0.9 at 10-21 N per pad; the force
-   split is not the limiter. The 90 mm control has no clean press at all (78.8
-   mm, 6.36 N on one frame, min J -0.09).
-6. **The clamp is applied in float32**, so a run that sits on it reports the
-   cap's own representation: `peak_force_n` 5.0000005 against a float64 5.0. The
-   gates allow one part in a million for that, and nothing more.
+   iterations mangles this volume within 0.1 s of it standing on the bench;
+   the qualified pair holds min J ≥ 0.48 and 4.9e-5 m of penetration. Both
+   scenes report the plain-VBD control (`--no-coarse`).
+2. **The 12 mm pads need friction, not ledges.** At `mu = 0.9` the cup's carry
+   loses the loop in about two seconds; at 2.0 the rod and cup holds hold. The
+   rod never needed the higher value because the rod takes the toy's weight
+   within 2 s of the load coming on.
+3. **The claw's footprint bounds the cup.** The 34 mm pad half-gap puts the
+   post 3 mm from the 50 mm bore wall; at 40 mm the post touched. The body is
+   110 mm wide in a 100 mm bore, so the press deforms its lower rim; local tet
+   inversion is the measured deformation and is reported, not gated away.
+4. **The press is the carrier's, not the jaws'.** The jaws stay under 5 N; the
+   carrier's 50 N budget is the press. A 12 mm patch on each shoulder at 6.90 N
+   is enough to seat the 77.3 mm insertion; a wider pad face is not needed.
+5. **The clamp is applied in float32**, so a run that sits on it reports the
+   cap's own representation: 5.0000005 against a float64 5.0. The gates allow
+   one part in a million for that, and nothing more.
+6. **Self-contact is millimetre-scale.** Newton's solver default is a 0.2 m
+   margin; at that value every particle pair touches and the toy explodes on
+   frame 1. The scenes pin 2 mm margin, 2 mm radius, topological filter 2 and
+   6 mm rest-shape exclusion; a 2 mm rest exclusion left the 6 mm grasp squeeze
+   folding the 11 mm loop into itself.
 
 ## AIRBOT Play arm variant
 

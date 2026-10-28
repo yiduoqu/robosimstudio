@@ -62,9 +62,10 @@ ASSET = Path(__file__).resolve().parent / "assets" / "clawhauser"
 OUTPUT = Path(__file__).resolve().parents[2] / "outputs" / "clawhauser_stuff_into_bottle"
 CONTROL_HZ = 30
 SUBSTEPS = 20
-DURATION = 18.0
-"""Long enough for the guarded descent to stall, for the release and body press
-to spend their budget, and for the open and withdraw to finish inside the run.
+DURATION = 22.0
+"""Long enough for the guarded descent to stall, for the release and the press
+that follows the body to the container's floor, and for the open and withdraw to
+finish inside the run.
 """
 BORE_RADIUS = 0.050
 """Inner radius of the container: 100 mm across by default. The body is 110 mm
@@ -142,11 +143,18 @@ reports no press. A 60 mm/s chase was measured to hit the loop first and turn
 the press into a tip.
 """
 PRESS_DEPTH = 0.040
-PRESS_RATE = 0.010
-"""How far the pads may drive the body down once they are on it [m, m/s]. The
-90 mm bore is smaller than the 110 mm body, so this is where the deformation
-happens: the path asks for 40 mm and the 50 N carrier clamp, not the path, bounds
-what the body receives.
+PRESS_RATE = 0.020
+"""The shortest press the pads make once they are on the body, and the rate they
+drive it at [m, m/s]. The press itself runs to ``PRESS_FLOOR_CLEARANCE`` above
+the container's floor: a 40 mm press measured from the contact pose ends above
+the rim when the pads touch the body early, and the toy then slides away under
+its own weight. The 50 N carrier clamp, not the path, bounds what the body
+receives.
+"""
+PRESS_FLOOR_CLEARANCE = 0.006
+"""How far above the container's floor the pads stop pressing [m]. The pads span
+68 mm across the 100 mm bore, so the press can follow the body's top all the way
+down; the clamp is what stops it when the body has no more room.
 """
 PRESS_HOLD = 0.5
 JAM_OPEN = 0.6
@@ -510,16 +518,20 @@ def after_jam(
 
 
 def press_path(positions: np.ndarray, dt: float) -> np.ndarray:
-    """From the contact pose: press straight down, hold, rise, open.    The pads are already on the body's top at the release gap; one flat bottom
-each side of the loop. The push clamp is what bounds the contact -- the path
-asks for 40 mm and the recorded force, not the path, is the press.
+    """From the contact pose: press straight down, hold, rise, open.
+
+    The pads are already on the body's top at the release gap; one flat bottom
+each side of the loop. The descent runs from where they are to just above the
+container's floor, so the body is pressed where it is rather than for a fixed
+40 mm from wherever it was first touched. The push clamp bounds the contact.
     """
     positions = np.asarray(positions, dtype=np.float64)
-    press_s = PRESS_DEPTH / PRESS_RATE
+    centre = 0.5 * (positions[0] + positions[1])
+    travel = float(centre[2]) - (TABLE_Z + FLOOR_Z + PRESS_FLOOR_CLEARANCE)
+    press_s = max(PRESS_DEPTH, travel) / PRESS_RATE
     hold_end = press_s + PRESS_HOLD
     rise_end = hold_end + JAM_WITHDRAW
     count = int(np.ceil((rise_end + JAM_OPEN) / dt)) + 2
-    centre = 0.5 * (positions[0] + positions[1])
     poses = np.zeros((count, 2, 7), dtype=np.float32)
     poses[:, :, 3:] = (0.0, 0.0, 0.0, 1.0)
     for index in range(count):

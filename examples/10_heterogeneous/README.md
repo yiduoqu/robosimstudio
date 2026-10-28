@@ -94,7 +94,8 @@ Controls and knobs, each reported with its measured effect:
 The cup flow: close on the loop, carry over the 100 mm bore, descend tail first,
 stop on the guarded stall, open to 68 mm and hold still for 0.5 s while gravity
 seats the toy, approach the body's top at 30 mm/s, then press with the carrier
-until 40 mm or the 50 N clamp. The first contact with a **body** particle (part
+until the pads are 6 mm above the container's floor or the 50 N clamp stops
+them. The first contact with a **body** particle (part
 1, not the loop) is the press handover; a run with no body contact is refused.
 The 68 mm opening puts the finger post's outer face at 47 mm in the 50 mm bore;
 an 80 mm opening reached 53 mm and was refused on `rim-blocks-pads` after 88

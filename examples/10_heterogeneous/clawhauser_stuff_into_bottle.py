@@ -62,7 +62,7 @@ ASSET = Path(__file__).resolve().parent / "assets" / "clawhauser"
 OUTPUT = Path(__file__).resolve().parents[2] / "outputs" / "clawhauser_stuff_into_bottle"
 CONTROL_HZ = 30
 SUBSTEPS = 20
-DURATION = 22.0
+DURATION = 24.0
 """Long enough for the guarded descent to stall, for the release and the press
 that follows the body to the container's floor, and for the open and withdraw to
 finish inside the run.
@@ -144,12 +144,11 @@ the press into a tip.
 """
 PRESS_DEPTH = 0.040
 PRESS_RATE = 0.020
-"""The shortest press the pads make once they are on the body, and the rate they
-drive it at [m, m/s]. The press itself runs to ``PRESS_FLOOR_CLEARANCE`` above
-the container's floor: a 40 mm press measured from the contact pose ends above
-the rim when the pads touch the body early, and the toy then slides away under
-its own weight. The 50 N carrier clamp, not the path, bounds what the body
-receives.
+"""The least the pads descend once they are on the body, and the rate they drive
+it at [m, m/s]. The descent runs to ``PRESS_FLOOR_CLEARANCE`` above the
+container's floor: a short press measured from the contact pose ends above the
+rim when the pads touch the body early, and the toy then slides away under its
+own weight. The 50 N carrier clamp, not the path, bounds what the body receives.
 """
 PRESS_FLOOR_CLEARANCE = 0.006
 """How far above the container's floor the pads stop pressing [m]. The pads span
@@ -523,22 +522,26 @@ def press_path(positions: np.ndarray, dt: float) -> np.ndarray:
     The pads are already on the body's top at the release gap; one flat bottom
 each side of the loop. The descent runs from where they are to just above the
 container's floor, so the body is pressed where it is rather than for a fixed
-40 mm from wherever it was first touched. The push clamp bounds the contact.
+distance from wherever it was first touched. The push clamp bounds the contact.
     """
     positions = np.asarray(positions, dtype=np.float64)
     centre = 0.5 * (positions[0] + positions[1])
     travel = float(centre[2]) - (TABLE_Z + FLOOR_Z + PRESS_FLOOR_CLEARANCE)
     press_s = max(PRESS_DEPTH, travel) / PRESS_RATE
     hold_end = press_s + PRESS_HOLD
-    rise_end = hold_end + JAM_WITHDRAW
-    count = int(np.ceil((rise_end + JAM_OPEN) / dt)) + 2
+    # Open before rising. A closed claw that lifts what it just wedged drags the
+    # toy back up and stays pinched in it: the p1/p2 runs ended with the pads
+    # still buried in the body, ``finger_contacts`` 2-5 and no release.
+    open_end = hold_end + JAM_OPEN
+    rise_end = open_end + JAM_WITHDRAW
+    count = int(np.ceil(rise_end / dt)) + 2
     poses = np.zeros((count, 2, 7), dtype=np.float32)
     poses[:, :, 3:] = (0.0, 0.0, 0.0, 1.0)
     for index in range(count):
         time = index * dt
-        gap = RELEASE_HALF_GAP + (OPENED_HALF_GAP - RELEASE_HALF_GAP) * smooth(time, rise_end, rise_end + JAM_OPEN)
+        gap = RELEASE_HALF_GAP + (OPENED_HALF_GAP - RELEASE_HALF_GAP) * smooth(time, hold_end, open_end)
         drop = -PRESS_RATE * min(time, press_s)
-        rise = WITHDRAW_Z * smooth(time, hold_end, rise_end)
+        rise = WITHDRAW_Z * smooth(time, open_end, rise_end)
         poses[index, 0, :3] = centre + np.array([-gap, 0.0, drop + rise])
         poses[index, 1, :3] = centre + np.array([gap, 0.0, drop + rise])
     return poses
@@ -650,6 +653,11 @@ def run(
             touching = depth > 0.0
             finger = np.isin(contact_shapes, grip.entity.finger_shapes)
             in_glass = np.isin(contact_shapes, glass_shapes)
+            # Two different penetrations, kept apart. A pad pressed 50 N into the
+            # plush indents it by the solver's slack -- that is the deformation the
+            # press is for. The toy sinking into the container's shell is not.
+            container_depth = depth[in_glass & touching]
+            pad_depth = depth[finger & touching]
             soft_particles = contacts.soft_contact_particle.numpy()[: min(count, contacts.soft_contact_max)]
             finger_local = soft_particles[finger] - particles[0]
             finger_local = finger_local[(finger_local >= 0) & (finger_local < len(part_of_particle))]
@@ -721,6 +729,8 @@ def run(
                 "finger_other_bodies": other_bodies,
                 "finger_container_detail": detail,
                 "max_penetration_m": float(depth.max()) if depth.size else 0.0,
+                "max_container_penetration_m": float(container_depth.max()) if container_depth.size else 0.0,
+                "max_pad_penetration_m": float(pad_depth.max()) if pad_depth.size else 0.0,
                 "finger_positions": [[float(v) for v in body_q[b][:3]] for b in grip.entity.bodies],
                 "carrier_pose": [float(v) for v in body_q[grip.entity.carrier_body]],
                 "actual_half_gaps_m": grip.entity.actual_half_gaps.numpy().tolist(),
@@ -902,7 +912,10 @@ def judge(
     # clearance alone called the 85.3 mm press "on the bench" at 5.6 mm.
     on_bench = settled_clearance <= DROP_CLEARANCE and settled[-1]["inside_fraction"] < 0.02
     wedged = bool(released and not on_bench and settled[-1]["below_rim_fraction"] > 0.02)
-    inserted = bool(released and reach >= RIM_Z - FLOOR_Z - 0.004)
+    # The pressed body compresses, so its tail stops a few millimetres short of the
+    # rigid floor; demanding contact there called the 81.8 mm p1 press "jammed".
+    usable = RIM_Z - FLOOR_Z
+    inserted = bool(released and reach >= 0.9 * usable)
     if nonfinite_substeps:
         stop = "solver-artifact"
     elif on_bench:
@@ -911,7 +924,7 @@ def judge(
         stop = "rim-blocks-pads"
     elif jam_frame is not None and push_contact_frames == 0:
         stop = "no-body-contact"
-    elif reach >= RIM_Z - FLOOR_Z - 0.004:
+    elif reach >= 0.9 * usable:
         stop = "inserted"
     else:
         # The descent ended with the toy held above the floor: whatever stopped it
@@ -946,6 +959,8 @@ def judge(
         "peak_force_n": peak_force,
         "peak_torque_nm": peak_torque,
         "max_penetration_m": max(row["max_penetration_m"] for row in diagnostics),
+        "max_container_penetration_m": max(row["max_container_penetration_m"] for row in diagnostics),
+        "max_pad_penetration_m": max(row["max_pad_penetration_m"] for row in diagnostics),
         "max_finger_contacts": max(row["finger_contacts"] for row in diagnostics),
         "max_container_contacts": max(row["container_contacts"] for row in diagnostics),
         "max_finger_container_contacts": max(row["finger_container_contacts"] for row in diagnostics),
@@ -967,7 +982,10 @@ def judge(
         and released
         and not on_bench
         and pads_in_container == 0
-        and result["max_penetration_m"] <= 0.0005
+        # The container's shell only. Pad indentation into the plush is the
+        # deformation the press exists to produce and is reported separately as
+        # ``max_pad_penetration_m``.
+        and result["max_container_penetration_m"] <= 0.0005
         # Local body inversion is the measured deformation at this bore, not a
         # hidden pass: it is reported in ``local_inversion`` and ``quality``. A
         # non-finite state is still refused outright.

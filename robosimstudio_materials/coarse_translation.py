@@ -244,8 +244,8 @@ class _TranslationBlock:
 
     def __init__(self, solver, *, contact_gap_m, substep_budget_m):
         self.solver = solver
-        if solver.rigid_soft_enable_dat or solver.particle_enable_self_contact:
-            raise ValueError("coarse translation does not support DAT or self-contact")
+        if solver.rigid_soft_enable_dat:
+            raise ValueError("coarse translation does not support DAT")
         limits = np.asarray((contact_gap_m, substep_budget_m), dtype=float)
         if not np.isfinite(limits).all() or np.any(limits <= 0):
             raise ValueError("positive finite limits required")
@@ -450,7 +450,9 @@ class SolverVBDCoarse(SolverVBD):
     omitted contact may involve this object. The block's budget limits its own
     additional motion; it does not limit local VBD or rigid-body motion and is
     not a collision-coverage guarantee. Diagnostics and budget clear on reset
-    and at every substep; DAT and self-contact cannot be enabled with it.
+    and at every substep; DAT cannot be enabled with it. Self-contact is
+    allowed: its pair forces are internal to the object and cancel in the
+    common-translation solve, which only reads rigid-soft contacts.
     """
 
     def __init__(
@@ -484,8 +486,8 @@ class SolverVBDCoarse(SolverVBD):
             )
 
     def step(self, state_in, state_out, control, contacts, dt, *, observables=None):
-        if self.coarse_block is not None and (self.rigid_soft_enable_dat or self.particle_enable_self_contact):
-            raise ValueError("coarse translation does not support enabling DAT or self-contact; rebuild the solver")
+        if self.coarse_block is not None and self.rigid_soft_enable_dat:
+            raise ValueError("coarse translation does not support enabling DAT; rebuild the solver")
         return super().step(state_in, state_out, control, contacts, dt, observables=observables)
 
     def reset(self, state, world_mask=None, flags=None):

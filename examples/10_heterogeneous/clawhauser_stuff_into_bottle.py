@@ -119,16 +119,15 @@ the loop cannot roll them, and the flat face plus its friction is the grip.
 """
 PAD_HALF_THICKNESS = 0.003
 """The pad box's half-extent along the closing axis, as ``gripper.py`` builds it."""
-PAD_HALF_WIDTH = 0.020
-"""The archived parallel gripper's 40 mm face across the pad, not the 12 mm
-loop-sized one. The pinch still closes on the loop's 11 mm sides; the press lands
-on the body's top, spread over both shoulders instead of one.
+PAD_HALF_WIDTH = 0.006
+"""The pad is a 12 mm square patch on the inner end of the 10 x 12 x 30 mm finger
+post: 12 mm across, the post's own width, and 12 mm tall, so it does not extend
+past the finger. The 40 mm archive face is gone. Two patches press the body's
+top, one on each shoulder.
 """
 OPENED_HALF_GAP = 0.040
-"""How far apart the jaws open once the toy is in place: 80 mm. The 40 mm pad
-face makes the old 90 mm opening put the pad corners into a 100 mm wall (119
-finger-container contacts); 80 mm leaves 2.6 mm to the wall and still clears the
-loop's 23 mm reach.
+"""How far apart the jaws open once the toy is in place: 80 mm. The 12 mm pads
+leave 7 mm to the 100 mm bore, and 80 mm still clears the loop's 23 mm reach.
 """
 PUSH_RATE = 0.030
 PUSH_TIME = 3.0

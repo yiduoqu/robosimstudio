@@ -134,6 +134,19 @@ class TestCoarseTranslation(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "active, unpinned"):
             SolverVBDCoarse(tet_model((0, 1, 2, 3), pinned=0), coarse_contact_gap=0.02, coarse_budget=0.005)
 
+    def test_the_block_accepts_self_contact(self):
+        """Self-contact pair forces are internal; the common-translation block
+        reads only rigid-soft contacts, so it can stay enabled beside them."""
+        from robosimstudio_materials.coarse_translation import SolverVBDCoarse
+
+        solver = SolverVBDCoarse(
+            tet_model((0, 1, 2, 3)),
+            particle_enable_self_contact=True,
+            coarse_contact_gap=0.02,
+            coarse_budget=0.005,
+        )
+        self.assertIsNotNone(solver.coarse_block)
+
     def test_collide_false_clears_rigid_and_particle_collision(self):
         collision = int(newton.ShapeFlags.COLLIDE_SHAPES | newton.ShapeFlags.COLLIDE_PARTICLES)
         for collide in (False, True):

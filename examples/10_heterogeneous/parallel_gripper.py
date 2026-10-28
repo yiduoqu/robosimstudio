@@ -10,9 +10,9 @@ only in z, where the 50 N push budget lives. The two jaws slide in x on the
 carrier under 5 N. No joint can rotate a pad.
 
 The carrier is the claw body (120 x 30 x 18 mm). Each finger is a 10 x 12 x 30 mm
-post with a 6 x 40 x 12 mm pad on its inner lower face -- the sketch's geometry,
-and the archive's 40 mm face. There are no ledges: the pad face and its friction
-are the only grip aid.
+post with a 6 x 12 x 12 mm pad on its inner lower face: a small patch that stays
+within the post's own 12 mm width and 30 mm height, as in the sketch. There are
+no ledges: the pad face and its friction are the only grip aid.
 """
 
 from __future__ import annotations
@@ -228,7 +228,7 @@ class ParallelGripperSpec:
     carrier_kd: float = 42.0
     gravity_compensation: bool = True
     pad_half_thickness: float = 0.003
-    pad_half_width: float = 0.020
+    pad_half_width: float = 0.006
     pad_half_height: float = 0.006
     post_half_x: float = 0.005
     post_half_y: float = 0.006

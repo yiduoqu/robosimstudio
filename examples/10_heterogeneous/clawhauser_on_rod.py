@@ -269,7 +269,9 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
         "particle_self_contact_radius": 0.002,
         "particle_self_contact_margin": 0.002,
         "particle_topological_contact_filter_threshold": 2,
-        "particle_rest_shape_contact_exclusion_radius": 0.0,
+        # The plush's own surface is within the contact margin at rest; exclude
+        # rest-shape pairs, or the toy tears itself apart on the first frame.
+        "particle_rest_shape_contact_exclusion_radius": 0.002,
         "particle_vertex_contact_buffer_size": 32,
         "particle_edge_contact_buffer_size": 64,
         "particle_enable_tile_solve": False,
@@ -485,6 +487,7 @@ def run(
     self_contact = {
         "enabled": bool(getattr(solver, "particle_enable_self_contact", False)),
         "margin_m": float(getattr(solver, "particle_self_contact_margin", 0.0)),
+        "rest_exclusion_m": float(getattr(solver, "particle_rest_shape_contact_exclusion_radius", 0.0)),
     }
     if not self_contact["enabled"]:
         raise RuntimeError("self-contact is off in the VBD solver: the toy would not fold on itself")
@@ -662,6 +665,9 @@ def judge(out: Path, diagnostics, quality, geometry, sim, entity, steps, *, vide
         "self_contact": {
             "enabled": bool(getattr(sim.pipeline.program.solver, "particle_enable_self_contact", False)),
             "margin_m": float(getattr(sim.pipeline.program.solver, "particle_self_contact_margin", 0.0)),
+            "rest_exclusion_m": float(
+                getattr(sim.pipeline.program.solver, "particle_rest_shape_contact_exclusion_radius", 0.0)
+            ),
         },
         "weight_n": weight,
         "rod_load_n": rod_load,

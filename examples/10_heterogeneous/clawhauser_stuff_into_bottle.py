@@ -125,9 +125,12 @@ post: 12 mm across, the post's own width, and 12 mm tall, so it does not extend
 past the finger. The 40 mm archive face is gone. Two patches press the body's
 top, one on each shoulder.
 """
-OPENED_HALF_GAP = 0.040
-"""How far apart the jaws open once the toy is in place: 80 mm. The 12 mm pads
-leave 7 mm to the 100 mm bore, and 80 mm still clears the loop's 23 mm reach.
+OPENED_HALF_GAP = 0.034
+"""How far apart the jaws open once the toy is in place: 68 mm, outside the
+loop's 23 mm reach. The finger's post reaches 13 mm outboard of its pad centre,
+so at 34 mm the post's outer face is 47 mm from the axis and clears the 50 mm
+bore by 3 mm; at 40 mm it was 53 mm and touched the wall (88 finger-container
+contacts, ``rim-blocks-pads``).
 """
 PUSH_RATE = 0.030
 PUSH_TIME = 3.0
@@ -149,11 +152,11 @@ PRESS_HOLD = 0.5
 JAM_OPEN = 0.6
 JAM_WITHDRAW = 0.5
 """After the press: hold, open, and rise clear."""
-RELEASE_HALF_GAP = 0.040
+RELEASE_HALF_GAP = 0.034
 """How far the jaws open to release the loop and pass its sides on the way to
-the body: 80 mm, 17 mm outside the loop's 23 mm reach and inside the 100 mm
+the body: 68 mm, 11 mm outside the loop's 23 mm reach and inside the 100 mm
 bore. The pads stay at this gap for the press, so they land on the body's
-shoulders at 40 mm each side of its top, clear of the loop between them.
+shoulders at 34 mm each side of its top, clear of the loop between them.
 """
 SETTLE_TIME = 0.5
 """How long the pads hold still after the release while the toy falls and seats

@@ -142,15 +142,14 @@ The first body-particle contact stops the approach. Until it does, the run
 reports no press. A 60 mm/s chase was measured to hit the loop first and turn
 the press into a tip.
 """
-PRESS_DEPTH = 0.045
+PRESS_DEPTH = 0.085
 PRESS_RATE = 0.020
 """How far below its first contact with the body the press drives, and the rate
 it drives at [m, m/s]. Bounded by distance, not by the container's floor: the
-descent to the floor is 180 mm, which at the claw's pose rate is still running
-when the run ends, so the claw never opens or leaves and every run reports
-``released: false``. 45 mm is enough to load the body past the jaw clamp without
-sinking the pads into the plush. The 50 N carrier clamp, not the path, bounds
-what the body receives.
+descent to the floor is 180 mm, and a path that long is still descending when
+the run ends, so the claw never opens or leaves. Measured, 45 mm of press put
+only 3.8-4.8 N on the body (the plush yields), 96 mm put 50 N and buried the
+claw; 85 mm is the span between them that still finishes inside the run.
 """
 PRESS_FLOOR_CLEARANCE = 0.006
 """How far above the container's floor the pads stop pressing [m], so a press

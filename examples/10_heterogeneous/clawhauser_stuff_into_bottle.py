@@ -408,7 +408,12 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
     # pad-container hit (measured: 110 at the press, 4 with the pads still 100 mm
     # above the rim).
     glass_bodies = np.concatenate([np.asarray(part.bodies, dtype=np.int32) for part in glass])
-    glass_shapes = np.flatnonzero(np.isin(sim.model.shape_body.numpy(), glass_bodies)).astype(np.int32)
+    # The soft channel needs the exact shape ids: the container's static shapes
+    # are on the world body, so mapping back through the glass bodies gives an
+    # empty set and every toy-cup contact vanishes. The pad gate stays body-based: a
+    # static shape's body cannot name the cup, and its range endpoint is the next
+    # entity's first shape (the source of the old 110 pad-toy hits).
+    glass_shapes = np.concatenate([np.arange(*part.shapes, dtype=np.int32) for part in glass])
     return sim, obj, grip, camera, ring, glass_shapes, glass_bodies, geometry
 
 

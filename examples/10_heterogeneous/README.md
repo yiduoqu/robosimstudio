@@ -50,8 +50,11 @@ element remains inversion-free.
 `clawhauser_on_rod.py` and `clawhauser_stuff_into_bottle.py` put the same
 labelled FEM volume through grasps whose force is bounded by the claw rather
 than by the script: the fingers carry their own mass and are driven by a clamped
-PD wrench (5 N, 0.03 N·m), so `peak_force_n` and `peak_torque_nm` are
-measurements, not consequences of prescribed motion. Both derive their geometry
+PD wrench. Closing uses `force_limit` (5 N, 0.03 N·m); pressing uses
+`push_force_limit` (50 N, 0.5 N·m), selected by the claw's own press state, so
+`peak_force_n` / `peak_torque_nm` are the grasp peaks and `peak_push_force_n` /
+`peak_push_torque_nm` the press peaks -- measurements, not consequences of
+prescribed motion. Both derive their geometry
 from the mesh -- the loop's hole centre and inradius by an inscribed-circle fixed
 point over the loop's vertices, the loop's width in the closing direction from
 that same plane, the tail's centre and extent from its own part labels -- and
@@ -60,14 +63,14 @@ both print the geometry the motion was built on.
 | Scene | What it asks | What it measured |
 |---|---|---|
 | `clawhauser_on_rod.py` | pinch the loop's sides, lift, thread the rod's free end through the hole, seat the toy on the rod, open, withdraw | the rod carries the toy: 1.205-1.213 N of its 1.227 N weight with the jaws open, 28.6-28.9 mm of bench clearance, peak jaw force 4.47 N of the 5 N cap, peak torque 0.015 N·m, min tet J 0.82, no inverted tetrahedra, three identical runs |
-| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 90 mm bore, lower it tail first, release, drop the pads onto the body, press, open, withdraw | 79.6 and 77.3 mm of insertion in two of three repeats, 42% of the volume inside, wedged after the jaws open, 12.8-18.2 mm of bench clearance, peak jaw force at the 5 N cap, min tet J 0.10-0.59, no inverted tetrahedra; the third repeat crushes the body at the rim and is refused |
+| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, chase the body with the open pads, press down, open, withdraw | 85.4 mm of insertion (to the floor), 45.5% of the volume inside, wedged with 19.2 mm of clearance, 12.2 N push peak over 5 frames of body contact, min tet J 0.19, no inverted tetrahedra; one of three identical repeats is clean, and the other two crush the body at the pad/rim (15.4 N, min J -0.96; 8.0 N, min J -0.19) and are refused. The 90 mm control inserts 78.8 mm but crushes on the first contact frame (6.36 N, 173 inverted tet-substeps) |
 
 Each scene takes the same controls and knobs, all of them reported with their
 measured effect:
 
 ```bash
 python examples/10_heterogeneous/clawhauser_on_rod.py  --out OUT --render-every 3            # or: --claw kinematic, --no-coarse, --rod-radius R, --mu MU
-python examples/10_heterogeneous/clawhauser_stuff_into_bottle.py --out OUT --render-every 3 # or: --claw kinematic, --no-coarse, --bore R, --cap N, --mu MU
+python examples/10_heterogeneous/clawhauser_stuff_into_bottle.py --out OUT --render-every 3 # or: --claw kinematic, --no-coarse, --bore R, --cap N, --push-cap N, --mu MU
 ```
 
 Both use the qualified pair of the coarse common-translation solve: detection
@@ -89,8 +92,10 @@ poses), `result.json` (the gates and the measurements they rest on) and
 | bottle | `--bore` | 50 mm | fails: the 47 mm tail fouls the bore, 6.1% of the volume inside, mesh crushed at the jam |
 | bottle | `--bore` | 60 mm | 65.7 mm deep, 33.6% inside, wedged; the press slides off the loop |
 | bottle | `--bore` | 66 / 72 / 80 mm | 67.8 / 69.6 / 74.7 mm deep, 34.9 / 35.9 / 39.7% inside, wedged |
-| bottle | `--bore` | 90 mm (default) | 79.6 / 77.3 mm deep in two of three repeats, 41.5-42.8% inside, wedged; one repeat crushes the body at the rim |
-| bottle | `--cap` | 2.5 / 5 / 10 / 15 / 25 N | at 60 mm with the pinch press: 65.7 / 65.7 / 66.4 / 53.9 (crushed) / 65.8 mm -- past 5 N the clamp is not the limiter, the loop slides out of the 12 mm pads |
+| bottle | `--bore` | 90 mm | fails on the body press: 78.8 mm, 6.36 N on one contact frame, min J -0.09, 173 inverted tet-substeps, refused |
+| bottle | `--bore` | 100 mm (default) | 85.4 mm, 45.5% inside, wedged; 1 of 3 identical repeats clean (12.2 N, min J 0.19); two crush (15.4 N and 8.0 N) |
+| bottle | `--push-cap` | 50 N (default) | the press peaks at 6.4-15.4 N, so the clamp bounds the press but is not what it reaches on this body; the closing clamp stays at 5 N |
+| bottle | `--cap` | 2.5 / 5 / 10 / 15 / 25 N | at 60 mm with the old pinch press: 65.7 / 65.7 / 66.4 / 53.9 (crushed) / 65.8 mm -- past 5 N the clamp is not the limiter, the loop slides out of the 12 mm pads |
 | both | `--mu` | 0.3 | fails: the pinch cannot hold. Scene A never seats the toy (rod support 0.000 N); Scene B never gets it off the bench (depth 0.0) |
 | both | `--mu` | 0.9 (default) | as tabulated above |
 
@@ -109,8 +114,9 @@ the pads before either scene's task starts.
 2. **A flat pad cannot hold a round cord; the 2.4 mm ledge is load-bearing.**
    Flat prisms were measured at 8 mm squeeze and mu 2.0: the loop rides 87-95 mm
    down the grip during the carry, the toy falls into the cup, and the fingers
-   end above the body with nothing to press. With the ledge, two of three 90 mm
-   repeats carry, release and press cleanly. Scene A never needs the ledge
+   end above the body with nothing to press. With the ledge and the 100 mm bore
+   the carry holds often enough to reach the press, but the pads still touch the
+   body on only 5-17 frames before it yields. Scene A never needs the ledge
    because the rod takes the toy's weight within 2 s of the load coming on.
 3. **The claws' footprint bounds the task.** Pads clamping the 110 mm body sit
    104 mm apart -- wider than any of these bores -- so the body is pressed, not
@@ -123,13 +129,19 @@ the pads before either scene's task starts.
 4. **The claw has the archived carrier.** A 120 x 30 x 18 mm kinematic block
    follows the fingers' midpoint 45 mm above them, as in
    `yiduo/archive-clawhauser-backend-20261027`'s `parallel_gripper.py`. It is a
-   body, not a third drive axis; the pads stay the 6 x 12 x 12 mm prisms.
+   body, not a third drive axis; the pads stay the 6 x 12 x 16 mm prisms.
 
-5. **The body press is not deterministic.** Two of three 90 mm repeats are
-   clean; the third crushes the body at the rim (min J -0.95, 2842 inverted
-   tet-substeps) and is refused, the same failure mode as the earlier b7 run.
-   The clean runs are 77.3-79.6 mm deep with 41.5-42.8% of the volume inside.
-4. **The clamp is applied in float32**, so a run that sits on it reports the
+5. **The body press is real but not deterministic.** At 100 mm the pads reach
+   the body's top beside the loop, and the push peaks at 6.4-15.4 N -- above the
+   5 N closing clamp, so the split is doing what it was added for. One of three
+   identical repeats is clean (85.4 mm, 12.2 N, min J 0.19, to the floor); the
+   other two crush the body at the pad/rim (min J -0.96 with 15.4 N and -0.19
+   with 8.0 N) and are refused. The contact is one-pad dominated (12.2 N against
+   1.5 N in the clean run) because the toy sits off the claw's centre and the
+   0.5 N·m push torque saturates; a 40 mm-wide pad, closer to the archived
+   gripper's face, is the untested next step. The 90 mm control has no clean
+   press at all: 78.8 mm, 6.36 N on one frame, min J -0.09, refused.
+6. **The clamp is applied in float32**, so a run that sits on it reports the
    cap's own representation: `peak_force_n` 5.0000005 against a float64 5.0. The
    gates allow one part in a million for that, and nothing more.
 

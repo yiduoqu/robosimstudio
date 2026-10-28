@@ -7,7 +7,10 @@ collision needs. ``mode="dynamic"`` gives each finger its own mass and inertia
 and drives it with a clamped PD wrench, so the jaw effort a scene reports is
 bounded by ``force_limit`` and ``torque_limit``, with gravity compensation
 inside the same budget. That is what turns overcompression into a measurable
-choice instead of a consequence of prescribed motion.
+choice instead of a consequence of prescribed motion. A claw that also presses
+has a second budget: ``set_press(True)`` swaps the drive to ``push_force_limit``
+and its torque limit, so closing stays a grasp and pressing can push harder.
+The choice is the claw's own state; no scene passes a limit per call.
 """
 
 from __future__ import annotations
@@ -87,13 +90,29 @@ def _drive_dynamic(
     force_limit: float,
     torque_limit: float,
     compensate_gravity: bool,
+    pressing: wp.array[int],
+    push_force_limit: float,
+    push_torque_limit: float,
+    push_angular_ke: float,
+    push_angular_kd: float,
     body_f: wp.array[wp.spatial_vector],
     applied: wp.array[wp.spatial_vector],
     peak_force: wp.array[float],
     peak_torque: wp.array[float],
+    peak_push_force: wp.array[float],
+    peak_push_torque: wp.array[float],
 ):
     finger = wp.tid()
     body = bodies[finger]
+    limit = force_limit
+    tlimit = torque_limit
+    ake = angular_ke
+    akd = angular_kd
+    if pressing[0] != 0:
+        limit = push_force_limit
+        tlimit = push_torque_limit
+        ake = push_angular_ke
+        akd = push_angular_kd
     frame = wp.min(tick[0], lengths[0] - 1)
     target = poses[frame, finger]
     current = body_q[body]
@@ -113,8 +132,8 @@ def _drive_dynamic(
     # Clamp after all actuator contributions, including only this finger's own
     # gravity compensation. Payload weight consumes the same finite budget.
     force_norm = wp.length(force)
-    if force_norm > force_limit:
-        force *= force_limit / force_norm
+    if force_norm > limit:
+        force *= limit / force_norm
     error = target_rotation * wp.quat_inverse(rotation)
     if error[3] < 0.0:
         error = wp.quat(-error[0], -error[1], -error[2], -error[3])
@@ -123,15 +142,18 @@ def _drive_dynamic(
     rotation_vector = wp.vec3(0.0)
     if sine > 1.0e-8:
         rotation_vector = axis * (2.0 * wp.atan2(sine, error[3]) / sine)
-    torque = angular_ke * rotation_vector + angular_kd * (target_angular - wp.spatial_bottom(velocity))
+    torque = ake * rotation_vector + akd * (target_angular - wp.spatial_bottom(velocity))
     torque_norm = wp.length(torque)
-    if torque_norm > torque_limit:
-        torque *= torque_limit / torque_norm
+    if torque_norm > tlimit:
+        torque *= tlimit / torque_norm
     wrench = wp.spatial_vector(force, torque)
     wp.atomic_add(body_f, body, wrench)
     applied[finger] = wrench
     peak_force[finger] = wp.max(peak_force[finger], wp.length(force))
     peak_torque[finger] = wp.max(peak_torque[finger], wp.length(torque))
+    if pressing[0] != 0:
+        peak_push_force[finger] = wp.max(peak_push_force[finger], wp.length(force))
+        peak_push_torque[finger] = wp.max(peak_push_torque[finger], wp.length(torque))
 
 
 @wp.kernel
@@ -163,6 +185,14 @@ class ScriptedGripperSpec:
     mode: str = "kinematic"
     finger_mass: float = 0.05
     force_limit: float = 5.0
+    """Closing clamp. A grasp squeezes with this and never more."""
+    push_force_limit: float = 50.0
+    """Press clamp. ``set_press`` swaps the drive onto it, so a press can push
+    harder than the jaws may close. One owner: the claw's press state.
+    """
+    push_torque_limit: float = 0.5
+    push_angular_ke: float = 0.5
+    push_angular_kd: float = 0.005
     torque_limit: float = 0.03
     linear_ke: float = 1500.0
     linear_kd: float = 15.0
@@ -205,6 +235,8 @@ class ScriptedGripperSpec:
         positive = (
             self.finger_mass,
             self.force_limit,
+            self.push_force_limit,
+            self.push_torque_limit,
             self.torque_limit,
             self.control_hz,
             self.substeps,
@@ -212,11 +244,20 @@ class ScriptedGripperSpec:
             self.pad_half_width,
             self.pad_half_thickness,
         )
-        gains = (self.linear_ke, self.linear_kd, self.angular_ke, self.angular_kd)
+        gains = (
+            self.linear_ke,
+            self.linear_kd,
+            self.angular_ke,
+            self.angular_kd,
+            self.push_angular_ke,
+            self.push_angular_kd,
+        )
         if not all(np.isfinite(v) and v > 0 for v in positive):
             raise ValueError("gripper mass, limits, rates and duration must be finite and positive")
         if not all(np.isfinite(v) and v >= 0 for v in gains):
             raise ValueError("gripper gains must be finite and nonnegative")
+        if self.push_force_limit < self.force_limit:
+            raise ValueError("push limit must not be below the closing limit")
         if self.carrier and (
             len(self.carrier_half_extents) != 3
             or not np.isfinite(self.carrier_half_extents).all()
@@ -360,6 +401,24 @@ class ScriptedGripper(rss.Entity):
         self.applied_wrenches = wp.zeros(2, dtype=wp.spatial_vector, device=device)
         self.peak_force = wp.zeros(2, dtype=float, device=device)
         self.peak_torque = wp.zeros(2, dtype=float, device=device)
+        self.peak_push_force = wp.zeros(2, dtype=float, device=device)
+        self.peak_push_torque = wp.zeros(2, dtype=float, device=device)
+        self._pressing = wp.zeros(1, dtype=int, device=device)
+
+    def set_press(self, pressing: bool) -> None:
+        """Select the press clamp instead of the closing clamp, or back.
+
+        A press is the claw driving the object down, not closing on it, so it
+        uses the push budget; the closing clamp is untouched and still bounds
+        every grasp.
+        """
+        self._pressing.assign(np.array([int(pressing)], dtype=np.int32))
+        if pressing:
+            self.peak_push_force.zero_()
+            self.peak_push_torque.zero_()
+
+    def pressing(self) -> bool:
+        return bool(self._pressing.numpy()[0]) if hasattr(self, "_pressing") else False
 
     def set_trajectory(self, poses: np.ndarray) -> None:
         """Replace the finger targets with [N, 2, 7] poses at the physics cadence.
@@ -415,8 +474,20 @@ class ScriptedGripper(rss.Entity):
                     spec.force_limit,
                     spec.torque_limit,
                     spec.gravity_compensation,
+                    self._pressing,
+                    spec.push_force_limit,
+                    spec.push_torque_limit,
+                    spec.push_angular_ke,
+                    spec.push_angular_kd,
                 ],
-                outputs=[state.body_f, self.applied_wrenches, self.peak_force, self.peak_torque],
+                outputs=[
+                    state.body_f,
+                    self.applied_wrenches,
+                    self.peak_force,
+                    self.peak_torque,
+                    self.peak_push_force,
+                    self.peak_push_torque,
+                ],
                 device=model.device,
             )
         else:
@@ -460,3 +531,6 @@ class ScriptedGripper(rss.Entity):
             self.applied_wrenches.zero_()
             self.peak_force.zero_()
             self.peak_torque.zero_()
+            self.peak_push_force.zero_()
+            self.peak_push_torque.zero_()
+            self._pressing.zero_()

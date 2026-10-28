@@ -33,7 +33,8 @@ Control, for contrast rather than for the result:
 Knobs, each reported with its measured effect:
 
     --bore      inner radius of the container [m]
-    --mu        the pipeline's single global soft-contact friction coefficient
+    --mu        the pipeline's single global soft-contact friction coefficient;
+                the container's own shapes keep ``CUP_FRICTION``
     --cap       closing force clamp [N]
     --push-cap  pressing force clamp [N]
 
@@ -78,6 +79,12 @@ WALL = 0.004
 """Panel thickness. The container is 24 flat panels, not a cylinder: a faceted
 wall is what a slab scene can build, and the facet's chord is what the toy rides
 over on its way in.
+"""
+CUP_FRICTION = 0.02
+"""The container's shape friction. VBD mixes a soft contact's coefficient as
+``sqrt(soft_contact_mu * shape_material_mu)``, so a near-zero wall gives
+``sqrt(2.0 * 0.02) = 0.2`` while the pads keep their 4.0 and the loop its grip:
+the body slides on the glass instead of grinding on the rim.
 """
 PANELS = 24
 RIM_Z = 0.090
@@ -322,6 +329,7 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
                 half=(bore + WALL, bore + WALL, FLOOR_Z / 2.0),
                 at=(TARGET_X, 0.0, FLOOR_Z / 2.0),
                 color=(0.55, 0.68, 0.74),
+                friction=CUP_FRICTION,
             )
         )
     ]
@@ -347,6 +355,7 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
                         float(np.cos(yaw / 2.0)),
                     ),
                     color=(0.62, 0.74, 0.80),
+                    friction=CUP_FRICTION,
                 )
             )
         )
@@ -834,6 +843,7 @@ def run(
                 "self_contact": self_contact,
                 "geometry": geometry,
                 "glass_panels": PANELS,
+                "cup_friction": CUP_FRICTION,
                 "wall_m": WALL,
                 "bore_radius_m": bore,
                 "rim_z_m": TABLE_Z + RIM_Z,

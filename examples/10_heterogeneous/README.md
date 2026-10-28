@@ -88,11 +88,7 @@ Controls and knobs, each reported with its measured effect:
   110 mm body; 90 mm was measured to expel the toy off the bench, 110/120 mm
   inverted its rim tets. 100 mm is the default.
 - `--mu`: the pipeline's single global soft friction coefficient. 0.9 for the
-  rod; 2.0 for the cup's loop grip. The container's own shapes carry
-  `CUP_FRICTION = 0.02`, and VBD mixes a soft contact as
-  `sqrt(soft_contact_mu * shape_material_mu)`, so the wall sits at 0.2 while the
-  pads stay at `sqrt(2.0 * 4.0) = 2.8`: the body slides on the glass and the jaws
-  still hold the loop.
+  rod; 2.0 for the cup's loop grip.
 - `--cap` / `--push-cap`: the jaw closing clamp and the carrier push clamp [N].
   The jaws never exceed 5 N; the press is bounded by distance at the default
   200 N and measured 9.5-63.0 N on this body.

@@ -529,11 +529,12 @@ distance from wherever it was first touched. The push clamp bounds the contact.
     travel = float(centre[2]) - (TABLE_Z + FLOOR_Z + PRESS_FLOOR_CLEARANCE)
     press_s = max(PRESS_DEPTH, travel) / PRESS_RATE
     hold_end = press_s + PRESS_HOLD
-    # Open before rising. A closed claw that lifts what it just wedged drags the
-    # toy back up and stays pinched in it: the p1/p2 runs ended with the pads
-    # still buried in the body, ``finger_contacts`` 2-5 and no release.
+    # Open while lifting. Under the 50 N press the pads are pinned into the plush
+    # by mu 2 friction: opening on its own was measured to sit at 34 mm for 100
+    # frames, because 5 N of jaw cannot slide 50 N of normal. Starting the rise
+    # with the open unloads that normal while the pads slide out.
     open_end = hold_end + JAM_OPEN
-    rise_end = open_end + JAM_WITHDRAW
+    rise_end = hold_end + JAM_WITHDRAW
     count = int(np.ceil(rise_end / dt)) + 2
     poses = np.zeros((count, 2, 7), dtype=np.float32)
     poses[:, :, 3:] = (0.0, 0.0, 0.0, 1.0)
@@ -541,7 +542,7 @@ distance from wherever it was first touched. The push clamp bounds the contact.
         time = index * dt
         gap = RELEASE_HALF_GAP + (OPENED_HALF_GAP - RELEASE_HALF_GAP) * smooth(time, hold_end, open_end)
         drop = -PRESS_RATE * min(time, press_s)
-        rise = WITHDRAW_Z * smooth(time, open_end, rise_end)
+        rise = WITHDRAW_Z * smooth(time, hold_end, rise_end)
         poses[index, 0, :3] = centre + np.array([-gap, 0.0, drop + rise])
         poses[index, 1, :3] = centre + np.array([gap, 0.0, drop + rise])
     return poses

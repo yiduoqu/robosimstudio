@@ -1,21 +1,24 @@
 # SPDX-License-Identifier: Apache-2.0
 """Lower the labelled Clawhauser volume into a faceted glass cylinder, tail first.
 
-The cylinder's bore is deliberately too small for the toy: at the default 60 mm
+The cylinder's bore is deliberately too small for the toy: at the default 90 mm
 inner diameter the tail (47 by 36 mm) enters and the body (110 by 72 mm) does
 not, so the descent stalls on the rim with the tail inside. That is the point of
-the scene: the guarded stall hands over to a slow press, and the run measures
-how deep the toy got, how much of it is inside, what the press deformed, whether
-the rim holds it after the jaws open, and what the jaws spent to get it there.
+the scene: the guarded stall releases the loop, the pads drop onto the body's
+top, and a slow press follows it down. The run measures how deep the toy
+got, how much of it is inside, what the press deformed, whether the rim holds it
+after the jaws open, and what the jaws spent to get it there.
 
 The claw is the force-bounded one, and this scene is what that bound is for. In
 dynamic mode the fingers carry their own mass and are driven by a clamped PD
 wrench, so the push the toy receives is at most the clamp and ``peak_force_n`` is
-a measurement. The stall is a milestone rather than the end: a jaw at its cap on
-a compressible volume keeps paying, so the guard hands the same closed grip a
-slow press toward the floor. The depth rate says when the easy descent is over;
-the clamp says what the slow part is allowed to cost. The run reports the depth
-that press bought and the effort that took.
+a measurement. The stall is a milestone rather than the end, and the loop is not
+what gets pushed: a 12 mm pad on an 11 mm loop lets the loop climb out as soon
+as the pads descend. So the guard releases the loop, drops the flat pads past
+its base, closes on the body's top outside the loop, and presses the body into
+the bore. The depth rate says when the easy descent is over; the clamp says what
+the slow part is allowed to cost. The run reports the depth that press bought
+and the effort that took.
 
 Geometry is measured from the mesh and reported: the loop's hole centre is where
 the pads close, its outer reach in the closing direction is the width the squeeze
@@ -58,13 +61,14 @@ ASSET = Path(__file__).resolve().parent / "assets" / "clawhauser"
 OUTPUT = Path(__file__).resolve().parents[2] / "outputs" / "clawhauser_stuff_into_bottle"
 CONTROL_HZ = 30
 SUBSTEPS = 20
-DURATION = 13.0
-"""Long enough for the guarded descent to stall, for the press to spend its
-budget, and for the open and withdraw that follow to finish inside the run.
+DURATION = 15.0
+"""Long enough for the guarded descent to stall, for the release and body press
+to spend their budget, and for the open and withdraw to finish inside the run.
 """
-BORE_RADIUS = 0.030
-"""Inner radius of the container: 60 mm across by default. The tail is 47 by 36 mm
-and the body 110 by 72 mm, so this bore takes the tail and stops on the body.
+BORE_RADIUS = 0.045
+"""Inner radius of the container: 90 mm across by default. The tail is 47 by 36 mm
+and the body 110 by 72 mm, so the bore takes the tail and the lower body and still
+stops the body's widest part; 90 mm measured 80.6 mm of insertion, 60 mm 65.1 mm.
 """
 WALL = 0.004
 """Panel thickness. The container is 24 flat panels, not a cylinder: a faceted
@@ -107,8 +111,9 @@ COARSE_BUDGET = 0.005
 """Cumulative coarse translation per substep, at most a quarter of the gap."""
 GRIP_SQUEEZE = 0.006
 """How far past the loop's measured width the closed pads aim [m]. The same
-measured value the rod scene uses: at 1 mm the round cord slides straight out of
-the pinch, at 6 mm the drive sits at its clamp and the grasp holds.
+measured value the rod scene uses. Flat prisms without the ledge were measured
+at 8 mm and mu 2.0 and still let the loop ride 87-95 mm down the grip during the
+carry, so the ledge is what carries the toy, not the squeeze.
 """
 PAD_HALF_THICKNESS = 0.003
 """The pad box's half-extent along the closing axis, as ``gripper.py`` builds it."""
@@ -116,7 +121,7 @@ OPENED_HALF_GAP = 0.045
 """How far apart the jaws open once the toy is in place."""
 PRESS_RATE = 0.012
 """Descent speed once the toy has stalled [m/s]. A third of the approach: the
-claw keeps its clamp on the loop and the toy has time to deform into the bore
+claw keeps its clamp on the body and the toy has time to deform into the bore
 instead of bouncing off the rim.
 """
 PRESS_MAX = 0.040
@@ -128,6 +133,25 @@ PRESS_HOLD = 0.5
 JAM_OPEN = 0.6
 JAM_WITHDRAW = 0.5
 """After the press: hold the squeeze, open, and rise clear."""
+RELEASE_HALF_GAP = 0.034
+"""How far the jaws open to release the loop and pass its sides on the way to
+the body: 68 mm, outside the loop's 23 mm reach and inside a 72 mm bore.
+"""
+BODY_HALF_GAP = 0.030
+"""Half the closing gap used on the body's top: 60 mm, outside the loop and
+inside the body's 110 mm shoulders.
+"""
+BODY_RELEASE = 0.0255
+"""Least the pads descend after releasing to bring their flat bottoms from the
+loop's hole centre to the body's top: the 31.5 mm of loop below the centre less
+the 6 mm pad half-height. The run adds the slip it measured while carrying, so
+the pads still land on the body when the loop has ridden down in the grip.
+"""
+BODY_RATE = 0.060
+"""Speed of that reposition [m/s]. Faster than the loop's own settle, so the
+pads catch the body while it is still in the pinch's shadow rather than after
+it has dropped onto the rim.
+"""
 WITHDRAW_Z = 0.060
 """How far the opened jaws rise to clear the toy: straight up, and clear of the
 rim, so the withdrawal cannot drag the toy out of the container it just entered.
@@ -203,6 +227,7 @@ def build_scene(*, coarse: bool, claw: str, bore: float, cap: float, mu: float |
         # The ledges gripper.py builds under each pad (2.4 mm tall, 3 mm inboard
         # of the pad's face): the grasp rests on them, so the run says so.
         "ledge": True,
+        "carrier": True,
         "bore_radius_m": bore,
         "rim_z_m": RIM_Z,
         "floor_z_m": FLOOR_Z,
@@ -331,6 +356,7 @@ def build_scene(*, coarse: bool, claw: str, bore: float, cap: float, mu: float |
             pad_half_thickness=PAD_HALF_THICKNESS,
             pad_half_width=0.006,
             ledge=True,
+            carrier=True,
             force_limit=cap,
             duration=DURATION,
             control_hz=CONTROL_HZ,
@@ -413,30 +439,47 @@ def waypoints(grip, capacity: int, dt: float, geometry: dict) -> np.ndarray:
     return poses
 
 
-def after_jam(positions: np.ndarray, dt: float, closed_half_gap: float, press_m: float) -> np.ndarray:
-    """The path the jam guard hands over to: keep pressing, hold, open, rise.
+def after_jam(
+    positions: np.ndarray, dt: float, closed_half_gap: float, press_m: float, body_drop: float
+) -> np.ndarray:
+    """The path the jam guard hands over to: release, find the body, press, rise.
 
-    Built from where the fingers actually are when the object stops moving, and
-    from the depth that is left: the pads drive down at ``PRESS_RATE`` for
-    ``press_m``, hold the squeeze, then open and rise clear. The gap they hold is
-    the one the trajectory was aiming at, not the gap the fingers are at --
-    commanding the measured gap lets the squeeze go, and a released loop slides
-    out of the pinch.
+    Releasing is what makes the press possible. The pinch carried the toy, but a
+    12 mm pad on an 11 mm loop cannot push it: the loop climbs out of the pinch
+    as soon as the pads descend. The body is the surface that can take the push,
+    and it is reachable once the jaws open to 68 mm and drop past the loop's
+    31.5 mm base. The pads then close at 60 mm -- outside the loop, over the
+    body's shoulders -- and press straight down. ``body_drop`` is measured at the
+    stall, so it includes however far the loop rode down in the grip while the
+    toy was carried.
     """
     positions = np.asarray(positions, dtype=np.float64)
     press_s = max(0.0, press_m) / PRESS_RATE
-    count = int(np.ceil((press_s + PRESS_HOLD + JAM_OPEN + JAM_WITHDRAW) / dt)) + 2
+    release_s = 0.4
+    body_drop = max(BODY_RELEASE, float(body_drop))
+    descend_s = body_drop / BODY_RATE
+    close_s = 0.3
+    # The pads start down as the jaws open, so the body is caught while it settles
+    # instead of free-falling out of the released loop and meeting the rim alone.
+    close_start = max(release_s, descend_s)
+    press_start = close_start + close_s
+    open_start = press_start + press_s + PRESS_HOLD
+    count = int(np.ceil((open_start + JAM_OPEN + JAM_WITHDRAW) / dt)) + 2
     centre = 0.5 * (positions[0] + positions[1])
     poses = np.zeros((count, 2, 7), dtype=np.float32)
     poses[:, :, 3:] = (0.0, 0.0, 0.0, 1.0)
-    open_start = press_s + PRESS_HOLD
     for index in range(count):
         time = index * dt
-        gap = closed_half_gap + (OPENED_HALF_GAP - closed_half_gap) * smooth(time, open_start, open_start + JAM_OPEN)
-        press = -PRESS_RATE * min(time, press_s)
-        rise = WITHDRAW_Z * smooth(time, open_start + JAM_OPEN, open_start + JAM_OPEN + JAM_WITHDRAW)
-        poses[index, 0, :3] = centre + np.array([-gap, 0.0, press + rise])
-        poses[index, 1, :3] = centre + np.array([gap, 0.0, press + rise])
+        gap = closed_half_gap + (RELEASE_HALF_GAP - closed_half_gap) * smooth(time, 0.0, release_s)
+        gap += (BODY_HALF_GAP - gap) * smooth(time, close_start, press_start)
+        # Rise first, open above the rim: the pads can be inside the bore when the
+        # press ends, and opening to 90 mm there would put them into the wall.
+        gap += (OPENED_HALF_GAP - gap) * smooth(time, open_start + JAM_WITHDRAW, open_start + JAM_WITHDRAW + JAM_OPEN)
+        drop = -BODY_RATE * min(time, body_drop)
+        press = -PRESS_RATE * min(max(0.0, time - press_start), press_s)
+        rise = WITHDRAW_Z * smooth(time, open_start, open_start + JAM_WITHDRAW)
+        poses[index, 0, :3] = centre + np.array([-gap, 0.0, drop + press + rise])
+        poses[index, 1, :3] = centre + np.array([gap, 0.0, drop + press + rise])
     return poses
 
 
@@ -589,8 +632,25 @@ def run(
                 jam_frame = frame + 1
                 fingers = np.array([[body_q[b][0], body_q[b][1], body_q[b][2]] for b in grip.entity.bodies])
                 press_m = min(PRESS_MAX, max(0.0, (RIM_Z - FLOOR_Z) - depth_best) + 0.010)
-                grip.entity.set_trajectory(after_jam(fingers, dt, grip.spec.closed_half_gap, press_m))
-                print(json.dumps({"jam_frame": jam_frame, "depth_m": depth_best, "press_m": press_m}), flush=True)
+                # The loop can ride down in the flat pads while the toy is carried;
+                # the press has to start from where the body actually is, not from
+                # where the hole centre was. The loop's lowest vertex is its base.
+                loop_bottom = float(owned[ring["loop_ids"]][:, 2].min())
+                finger_z = float(np.mean([body_q[b][2] for b in grip.entity.bodies]))
+                # +10 mm, not 2: the release lets the toy settle a few millimetres
+                # before the pads arrive, and a 2 mm lead was measured to leave the
+                # pads 2 mm above the body with the press spent. The clamp, not the
+                # lead, is what bounds the contact.
+                body_drop = max(0.0, finger_z - 0.006 - loop_bottom + 0.010)
+                grip.entity.set_trajectory(
+                    after_jam(fingers, dt, grip.spec.closed_half_gap, press_m, body_drop)
+                )
+                print(
+                    json.dumps(
+                        {"jam_frame": jam_frame, "depth_m": depth_best, "press_m": press_m, "body_drop_m": body_drop}
+                    ),
+                    flush=True,
+                )
             if claw == "dynamic":
                 row["applied"] = grip.entity.applied_wrenches.numpy().tolist()
                 row["peak_force_n"] = grip.entity.peak_force.numpy().tolist()
@@ -660,9 +720,10 @@ def judge(out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame
     inside = max(row["inside_fraction"] for row in diagnostics)
     released = max(row["finger_contacts"] for row in settled) == 0
     settled_clearance = min(row["minimum_z_m"] for row in settled) - TABLE_Z
-    # The pads' own clearance over the rim, which is what the container can block:
-    # this bore lets them in, a deeper one need not.
+    # The pads' own clearance over the rim: reported, not gated. A body press can
+    # legitimately put them inside the bore; what must not happen is touching it.
     pad_z = min(min(row["finger_positions"][side][2] for side in (0, 1)) for row in diagnostics) - (TABLE_Z + RIM_Z)
+    pads_in_container = max(row["finger_container_contacts"] for row in diagnostics)
     # How far the pads actually drove down after the stall: the press is bounded
     # by ``press_m`` in the trajectory, but the dynamic fingers can lag it, so the
     # commanded budget and the travelled distance are both reported.
@@ -687,7 +748,7 @@ def judge(out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame
         stop = "solver-artifact"
     elif on_bench:
         stop = "object-dropped"
-    elif pad_z < 0.0:
+    elif pads_in_container:
         stop = "rim-blocks-pads"
     elif reach >= RIM_Z - FLOOR_Z - 0.004:
         stop = "inserted"
@@ -731,6 +792,7 @@ def judge(out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame
         and released
         and not on_bench
         and stop != "solver-artifact"
+        and pads_in_container == 0
         and result["max_penetration_m"] <= 0.0005
         and nonfinite_substeps == 0
         and min(quality_read["minimum_J_by_part"]) > 0.0

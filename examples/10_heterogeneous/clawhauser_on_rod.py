@@ -334,6 +334,7 @@ def build_scene(*, coarse: bool, claw: str, rod_radius: float = ROD_RADIUS, mu: 
             pad_half_thickness=PAD_HALF_THICKNESS,
             pad_half_width=0.006,
             ledge=False,
+            carrier=True,
             duration=DURATION,
             control_hz=CONTROL_HZ,
             substeps=SUBSTEPS,

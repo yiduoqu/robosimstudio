@@ -60,7 +60,7 @@ both print the geometry the motion was built on.
 | Scene | What it asks | What it measured |
 |---|---|---|
 | `clawhauser_on_rod.py` | pinch the loop's sides, lift, thread the rod's free end through the hole, seat the toy on the rod, open, withdraw | the rod carries the toy: 1.205-1.213 N of its 1.227 N weight with the jaws open, 28.6-28.9 mm of bench clearance, peak jaw force 4.47 N of the 5 N cap, peak torque 0.015 N·m, min tet J 0.82, no inverted tetrahedra, three identical runs |
-| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 60 mm bore, lower it tail first, stop when it jams on the rim, open, withdraw | it jams: 64.7 mm of insertion, a third of the volume inside the bore, still wedged after the jaws open, 25.3 mm of bench clearance, peak jaw force at the 5 N cap, min tet J 0.48, no inverted tetrahedra |
+| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 90 mm bore, lower it tail first, release, drop the pads onto the body, press, open, withdraw | 79.6 and 77.3 mm of insertion in two of three repeats, 42% of the volume inside, wedged after the jaws open, 12.8-18.2 mm of bench clearance, peak jaw force at the 5 N cap, min tet J 0.10-0.59, no inverted tetrahedra; the third repeat crushes the body at the rim and is refused |
 
 Each scene takes the same controls and knobs, all of them reported with their
 measured effect:
@@ -87,9 +87,10 @@ poses), `result.json` (the gates and the measurements they rest on) and
 | rod | `--rod-radius` | 6 mm (default) | threads; 1.205 N (98.2%) |
 | rod | `--rod-radius` | 10 mm | threads; 1.218 N (99.3%) |
 | bottle | `--bore` | 50 mm | fails: the 47 mm tail fouls the bore, 6.1% of the volume inside, mesh crushed at the jam |
-| bottle | `--bore` | 60 mm (default) | jams on the rim: 64.7 mm deep, 32.7% inside, wedged |
-| bottle | `--bore` | 70 mm | jams as intended: 67.9 mm deep, 35.1% inside, wedged |
-| bottle | `--cap` | 2.5 N | jams at 66.1 mm with 34.1% inside, wedged -- the same depth as 5 N at half the effort |
+| bottle | `--bore` | 60 mm | 65.7 mm deep, 33.6% inside, wedged; the press slides off the loop |
+| bottle | `--bore` | 66 / 72 / 80 mm | 67.8 / 69.6 / 74.7 mm deep, 34.9 / 35.9 / 39.7% inside, wedged |
+| bottle | `--bore` | 90 mm (default) | 79.6 / 77.3 mm deep in two of three repeats, 41.5-42.8% inside, wedged; one repeat crushes the body at the rim |
+| bottle | `--cap` | 2.5 / 5 / 10 / 15 / 25 N | at 60 mm with the pinch press: 65.7 / 65.7 / 66.4 / 53.9 (crushed) / 65.8 mm -- past 5 N the clamp is not the limiter, the loop slides out of the 12 mm pads |
 | both | `--mu` | 0.3 | fails: the pinch cannot hold. Scene A never seats the toy (rod support 0.000 N); Scene B never gets it off the bench (depth 0.0) |
 | both | `--mu` | 0.9 (default) | as tabulated above |
 
@@ -105,19 +106,29 @@ the pads before either scene's task starts.
    the same numbers in both scenes, while the qualified pair holds min J ≥ 0.48
    and 4.9e-5 m of penetration. Both scenes report the plain-VBD control
    (`--no-coarse`) rather than asserting this.
-2. **A bounded pinch cannot hold a round cord for long.** Carrying the toy by
-   the loop alone, the cord creeps out of a 5 N squeeze in about two seconds of
-   load: finger contacts 6, 4, 3, 1, 0 over 2.6-4.6 s, with the toy back on the
-   bench before the carry. Scene A never meets this because the rod takes the
-   toy's weight within 2 s of the load coming on; Scene B needs the 2.4 mm
-   ledges under its pads, after which what holds the toy is form closure on the
-   shelves rather than friction on a cord.
+2. **A flat pad cannot hold a round cord; the 2.4 mm ledge is load-bearing.**
+   Flat prisms were measured at 8 mm squeeze and mu 2.0: the loop rides 87-95 mm
+   down the grip during the carry, the toy falls into the cup, and the fingers
+   end above the body with nothing to press. With the ledge, two of three 90 mm
+   repeats carry, release and press cleanly. Scene A never needs the ledge
+   because the rod takes the toy's weight within 2 s of the load coming on.
 3. **The claws' footprint bounds the task.** Pads clamping the 110 mm body sit
-   104 mm apart -- wider than the 60 mm bore they would have to follow the toy
-   into -- and a grip on the tail (46.9 by 36.1 mm, and the part that goes in
+   104 mm apart -- wider than any of these bores -- so the body is pressed, not
+   gripped: after the stall the jaws release and their bottoms push its
+   shoulders. A grip on the tail (46.9 by 36.1 mm, and the part that goes in
    first) hangs the body *above* the pinch, where two flat faces cannot resist
    the moment: the toy tipped 60 degrees and left the jaws by t = 3.6 s. Both
    are recorded as deviations in `.agents/plans/BLUEPRINT_heterogeneous_scenes.md`.
+
+4. **The claw has the archived carrier.** A 120 x 30 x 18 mm kinematic block
+   follows the fingers' midpoint 45 mm above them, as in
+   `yiduo/archive-clawhauser-backend-20261027`'s `parallel_gripper.py`. It is a
+   body, not a third drive axis; the pads stay the 6 x 12 x 12 mm prisms.
+
+5. **The body press is not deterministic.** Two of three 90 mm repeats are
+   clean; the third crushes the body at the rim (min J -0.95, 2842 inverted
+   tet-substeps) and is refused, the same failure mode as the earlier b7 run.
+   The clean runs are 77.3-79.6 mm deep with 41.5-42.8% of the volume inside.
 4. **The clamp is applied in float32**, so a run that sits on it reports the
    cap's own representation: `peak_force_n` 5.0000005 against a float64 5.0. The
    gates allow one part in a million for that, and nothing more.

@@ -135,6 +135,23 @@ def _drive_dynamic(
 
 
 @wp.kernel
+def _place_carrier(
+    fingers: wp.array[int],
+    carrier: int,
+    offset: float,
+    q0: wp.array[wp.transform],
+    q1: wp.array[wp.transform],
+):
+    """Keep the carrier centred over the fingers, wherever the drive has them."""
+    left = q0[fingers[0]]
+    right = q0[fingers[1]]
+    midpoint = (wp.transform_get_translation(left) + wp.transform_get_translation(right)) * 0.5
+    pose = wp.transform(midpoint + wp.vec3(0.0, 0.0, offset), wp.quat_identity())
+    q0[carrier] = pose
+    q1[carrier] = pose
+
+
+@wp.kernel
 def _advance_tick(tick: wp.array[int], lengths: wp.array[int]):
     tick[0] = wp.min(tick[0] + 1, lengths[0] - 1)
 
@@ -159,6 +176,16 @@ class ScriptedGripperSpec:
     A scene that states its closing gap from a measured width has to know it.
     """
     ledge: bool = True
+    carrier: bool = False
+    """A rectangular wrist block above the fingers, as the archived parallel
+    gripper has: the claw's body, not a third drive axis. It is kinematic and
+    follows the fingers' midpoint.
+    """
+    carrier_half_extents: tuple[float, float, float] = (0.060, 0.015, 0.009)
+    carrier_offset_z: float = 0.045
+    """The carrier's bottom sits ``offset - hz`` above the finger centres: 36 mm
+    for the archived 120 x 30 x 18 mm block, clear of the loop's top at 31.5 mm.
+    """
     center: tuple[float, float, float] = (0.0, 0.0, 0.02)
     half_gap: float = 0.015
     closed_half_gap: float = 0.005
@@ -190,6 +217,14 @@ class ScriptedGripperSpec:
             raise ValueError("gripper mass, limits, rates and duration must be finite and positive")
         if not all(np.isfinite(v) and v >= 0 for v in gains):
             raise ValueError("gripper gains must be finite and nonnegative")
+        if self.carrier and (
+            len(self.carrier_half_extents) != 3
+            or not np.isfinite(self.carrier_half_extents).all()
+            or min(self.carrier_half_extents) <= 0
+            or not np.isfinite(self.carrier_offset_z)
+            or self.carrier_offset_z <= 0
+        ):
+            raise ValueError("carrier needs three positive half extents and a positive offset")
 
 
 @rss.register_entity("scripted_loop_gripper")
@@ -205,6 +240,34 @@ class ScriptedGripper(rss.Entity):
         self.bodies = []
         self.finger_shapes = []
         self.shapes_by_side = []
+        if spec.carrier:
+            half = np.asarray(spec.carrier_half_extents, dtype=float)
+            self.carrier_mass = 0.2
+            inertia = np.diag(
+                np.array((half[1] ** 2 + half[2] ** 2, half[0] ** 2 + half[2] ** 2, half[0] ** 2 + half[1] ** 2))
+                * self.carrier_mass
+                / 3
+            )
+            self.carrier_body = builder.add_body(
+                xform=wp.transform(
+                    self.center + np.array([0.0, 0.0, spec.carrier_offset_z]),
+                    wp.quat_identity(),
+                ),
+                mass=self.carrier_mass,
+                inertia=wp.mat33(inertia),
+                lock_inertia=True,
+                is_kinematic=True,
+                label=f"{spec.name}_carrier",
+            )
+            self.carrier_shape = builder.add_shape_box(
+                self.carrier_body,
+                hx=float(half[0]),
+                hy=float(half[1]),
+                hz=float(half[2]),
+                cfg=cfg,
+                color=(0.16, 0.30, 0.39),
+                label=f"{spec.name}_carrier_bar",
+            )
         # Explicit solid-finger envelope inertia: the pads are collision shapes,
         # not the body's mass, so a dynamic finger is exactly as heavy as the
         # mass the drive's gravity compensation and clamp talk about.
@@ -356,22 +419,35 @@ class ScriptedGripper(rss.Entity):
                 outputs=[state.body_f, self.applied_wrenches, self.peak_force, self.peak_torque],
                 device=model.device,
             )
-            return
-        wp.launch(
-            _drive_fingers,
-            dim=2,
-            inputs=[
-                self._tick,
-                self._lengths,
-                self._body_indices,
-                self._poses,
-                self._velocities,
-                state.body_q,
-                self.pipeline.state_1.body_q,
-                state.body_qd,
-                self.pipeline.state_1.body_qd,
-            ],
-        )
+        else:
+            wp.launch(
+                _drive_fingers,
+                dim=2,
+                inputs=[
+                    self._tick,
+                    self._lengths,
+                    self._body_indices,
+                    self._poses,
+                    self._velocities,
+                    state.body_q,
+                    self.pipeline.state_1.body_q,
+                    state.body_qd,
+                    self.pipeline.state_1.body_qd,
+                ],
+            )
+        if spec.carrier:
+            wp.launch(
+                _place_carrier,
+                dim=1,
+                inputs=[
+                    self._body_indices,
+                    self.carrier_body,
+                    spec.carrier_offset_z,
+                    state.body_q,
+                    self.pipeline.state_1.body_q,
+                ],
+                device=self._model.device,
+            )
 
     def _advance(self, state, dt) -> None:
         del state, dt

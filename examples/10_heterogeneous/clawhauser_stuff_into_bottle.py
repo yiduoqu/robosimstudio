@@ -170,6 +170,12 @@ the body: 68 mm, 11 mm outside the loop's 23 mm reach and inside the 100 mm
 bore. The pads stay at this gap for the press, so they land on the body's
 shoulders at 34 mm each side of its top, clear of the loop between them.
 """
+JAM_RELEASE = 0.4
+"""How long the jaws take to open off the loop at the stall [s]."""
+ALIGN_TIME = 0.2
+"""How long the open pads take to slide over the settled body's top [s]. The
+slide finishes before the descent starts, so both pads land together.
+"""
 SETTLE_TIME = 0.5
 """How long the pads hold still after the release while the toy falls and seats
 under gravity [s]. The toy is never driven down by the pads: the pads wait, then
@@ -480,42 +486,56 @@ def body_top_centre(owned: np.ndarray, ring: dict, band: float = 0.020) -> np.nd
     return body[body[:, 2] >= body[:, 2].max() - band].mean(axis=0)
 
 
-def after_jam(
-    positions: np.ndarray, dt: float, closed_half_gap: float, body_centre: np.ndarray
-) -> np.ndarray:
-    """Release the loop, re-centre over the body, then chase it down.
+def after_jam(positions: np.ndarray, dt: float, closed_half_gap: float) -> np.ndarray:
+    """Open off the loop and hold: gravity seats the toy on the rim.
 
-    The pinch cannot push: a 12 mm pad on an 11 mm round cord loses it as soon as
-    the pads descend. The pads open to 68 mm -- outside the loop's 23 mm reach --
-    and the release window also slides them over the measured body centre: the
-    toy drifts while carried, and a claw that descends where the fingers were at
-    the stall lands one pad on the body first (p2 was 17 mm off in x, 41 mm in y)
-    and the push torque cap turns that into a tilt. Centred, both flat bottoms
-    reach the body's shoulders together. The chase ends at the first pad-particle
-    contact, which is the handover to ``press_path``; this path alone never claims
-    a press, and the judge refuses a run that reaches the end of it with no contact.
+    The pinch cannot push (a 12 mm pad on an 11 mm round cord loses it as soon as
+    the pads descend), so the pads open to 68 mm -- outside the loop's 23 mm
+    reach -- and stay put. No descent and no lateral move: the body's centre is
+    re-measured after the settle, in ``chase_path``, because a toy that slid on
+    the rim while it fell is no longer above the pose it had at the stall.
+    """
+    positions = np.asarray(positions, dtype=np.float64)
+    centre = 0.5 * (positions[0] + positions[1])
+    count = int(np.ceil((JAM_RELEASE + SETTLE_TIME + 0.1) / dt)) + 2
+    poses = np.zeros((count, 2, 7), dtype=np.float32)
+    poses[:, :, 3:] = (0.0, 0.0, 0.0, 1.0)
+    for index in range(count):
+        gap = closed_half_gap + (RELEASE_HALF_GAP - closed_half_gap) * smooth(
+            index * dt, 0.0, JAM_RELEASE
+        )
+        poses[index, 0, :3] = centre + np.array([-gap, 0.0, 0.0])
+        poses[index, 1, :3] = centre + np.array([gap, 0.0, 0.0])
+    return poses
+
+
+def chase_path(positions: np.ndarray, dt: float, body_centre: np.ndarray) -> np.ndarray:
+    """From the settled pose: slide over the body's top, then chase it down.
+
+    The centre is the one measured after the settle, so the pads are aimed at the
+    body's top where it is rather than where it was at the stall. The slide ends
+    before the descent starts, so both flat bottoms meet the shoulders together:
+    a claw that descends off-centre lands one pad first and tips the toy off the
+    rim. The chase ends at the first pad-particle contact, the handover to
+    ``press_path``; a path that reaches its end without one claims no press.
     """
     positions = np.asarray(positions, dtype=np.float64)
     body_centre = np.asarray(body_centre, dtype=np.float64)[:2]
-    release_s = 0.4
-    approach_s = release_s + SETTLE_TIME
-    fallback = approach_s + PUSH_TIME
-    count = int(np.ceil((fallback + JAM_WITHDRAW + JAM_OPEN) / dt)) + 2
     centre = 0.5 * (positions[0] + positions[1])
+    fallback = ALIGN_TIME + PUSH_TIME
+    count = int(np.ceil((fallback + JAM_WITHDRAW + JAM_OPEN) / dt)) + 2
     poses = np.zeros((count, 2, 7), dtype=np.float32)
     poses[:, :, 3:] = (0.0, 0.0, 0.0, 1.0)
     for index in range(count):
         time = index * dt
-        gap = closed_half_gap + (RELEASE_HALF_GAP - closed_half_gap) * smooth(time, 0.0, release_s)
-        # A run that never touches the body still has to put the claw away cleanly.
-        gap += (OPENED_HALF_GAP - gap) * smooth(time, fallback + JAM_WITHDRAW, fallback + JAM_WITHDRAW + JAM_OPEN)
-        # The pads hold still through the settle, then approach; gravity, not the
-        # pads, is what makes the toy fall onto the rim.
-        drop = -PUSH_RATE * max(0.0, time - approach_s)
-        rise = WITHDRAW_Z * smooth(time, fallback, fallback + JAM_WITHDRAW)
-        align = smooth(time, 0.0, release_s)
+        gap = RELEASE_HALF_GAP + (OPENED_HALF_GAP - RELEASE_HALF_GAP) * smooth(
+            time, fallback + JAM_WITHDRAW, fallback + JAM_WITHDRAW + JAM_OPEN
+        )
+        align = smooth(time, 0.0, ALIGN_TIME)
         cx = centre[0] + (body_centre[0] - centre[0]) * align
         cy = centre[1] + (body_centre[1] - centre[1]) * align
+        drop = -PUSH_RATE * max(0.0, time - ALIGN_TIME)
+        rise = WITHDRAW_Z * smooth(time, fallback, fallback + JAM_WITHDRAW)
         poses[index, 0, :3] = np.array([cx - gap, cy, centre[2] + drop + rise])
         poses[index, 1, :3] = np.array([cx + gap, cy, centre[2] + drop + rise])
     return poses
@@ -629,6 +649,7 @@ def run(
 
     diagnostics = []
     jam_frame = None
+    chase_frame = None
     press_frame = None
     shape_body = sim.model.shape_body.numpy()
     finger_bodies = np.asarray(grip.entity.bodies, dtype=np.int32)
@@ -767,7 +788,7 @@ def run(
                 jam_frame = frame + 1
                 fingers = np.array([[body_q[b][0], body_q[b][1], body_q[b][2]] for b in grip.entity.bodies])
                 body_centre = body_top_centre(owned, ring)[:2]
-                grip.entity.set_trajectory(after_jam(fingers, dt, grip.spec.closed_half_gap, body_centre))
+                grip.entity.set_trajectory(after_jam(fingers, dt, grip.spec.closed_half_gap))
                 grip.entity.set_press(True)
                 print(
                     json.dumps(
@@ -780,9 +801,33 @@ def run(
                     ),
                     flush=True,
                 )
-            # The pads open past the loop and chase the body down; the first
-            # pad-particle contact after the release is the handover to the press.
-            # Before it, the press does not exist and the judge says so.
+            # A run where the release already left the pads on the body is the
+            # press's, not the chase's: re-aiming there would drag the pads across
+            # the top it is standing on. The chase is the recovery for the other
+            # case -- no contact after the settle, because the toy slid on the rim
+            # and the pads would otherwise descend beside it.
+            elif (
+                jam_frame is not None
+                and chase_frame is None
+                and press_frame is None
+                and frame + 1 >= jam_frame + round((JAM_RELEASE + SETTLE_TIME) * CONTROL_HZ)
+            ):
+                chase_frame = frame + 1
+                fingers = np.array([[body_q[b][0], body_q[b][1], body_q[b][2]] for b in grip.entity.bodies])
+                settled = body_top_centre(owned, ring)[:2]
+                grip.entity.set_trajectory(chase_path(fingers, dt, settled))
+                print(
+                    json.dumps(
+                        {
+                            "chase_frame": chase_frame,
+                            "settled_body_centre_m": settled.tolist(),
+                            "settle_drift_m": (settled - body_centre).tolist(),
+                        }
+                    ),
+                    flush=True,
+                )
+            # The first pad-particle contact after the release is the handover to
+            # the press. Before it, the press does not exist and the judge says so.
             if (
                 jam_frame is not None
                 and not body_contact_seen

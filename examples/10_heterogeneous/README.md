@@ -48,9 +48,10 @@ element remains inversion-free.
 ## The rod and the container: two scenes for a parallel claw
 
 `clawhauser_on_rod.py` and `clawhauser_stuff_into_bottle.py` build the same
-parallel claw: a level 120 x 30 x 18 mm carrier, two 10 x 12 x 30 mm finger
+parallel claw: a level 120 x 30 x 18 mm carrier, two 10 x 12 x 42 mm finger
 posts on native prismatic slides, and 6 x 12 x 12 mm pad inserts on the posts'
-inner ends. The pads cannot rotate, and there is no ledge: the pad face and its
+inner faces. Each post runs from the pad's bottom face to the carrier's
+underside, so the pad sits flush in the post and the finger is one column. The pads cannot rotate, and there is no ledge: the pad face and its
 friction are the only grip aids. The jaws close under a 5 N clamp; the carrier
 is the press path under a separate 50 N clamp, so `peak_force_n` is the jaw peak
 and `peak_push_force_n` the press peak. The toy's self-contact is on (2 mm

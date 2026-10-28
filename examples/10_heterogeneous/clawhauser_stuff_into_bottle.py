@@ -156,9 +156,20 @@ PRESS_FLOOR_CLEARANCE = 0.006
 down; the clamp is what stops it when the body has no more room.
 """
 PRESS_HOLD = 0.5
+PRESS_RELEASE_HOLD = 0.3
+"""How long the press holds at its deepest pose, and how long the releasing claw
+holds before it opens and rises [s]."""
 JAM_OPEN = 0.6
 JAM_WITHDRAW = 0.5
-"""After the press: hold, open, and rise clear."""
+"""After the press: open and rise clear, over these two spans [s]."""
+PRESS_STALL_FRAMES = round(0.4 * CONTROL_HZ)
+PRESS_STALL_STEP = 0.001
+"""How long the toy must stop going deeper, and by how little, for the press to
+end [frames, m]. Without it the pads keep descending after the toy has jammed and
+the plush bulges up around them: measured, 64-96 mm of pad travel for 2.6-15 mm
+of insertion, with the claw swallowed to the posts and 5 N of jaw unable to free
+it (p1-p9 all ended ``released: false``).
+"""
 RELEASE_HALF_GAP = 0.034
 """How far the jaws open to release the loop and pass its sides on the way to
 the body: 68 mm, 11 mm outside the loop's 23 mm reach and inside the 100 mm
@@ -516,19 +527,21 @@ def after_jam(
     return poses
 
 
-def press_path(positions: np.ndarray, dt: float) -> np.ndarray:
-    """From the contact pose: press straight down, hold, rise, open.
+def press_path(positions: np.ndarray, dt: float, *, descend: bool, hold: float) -> np.ndarray:
+    """From the contact pose: press straight down, hold, open while rising.
 
     The pads are already on the body's top at the release gap; one flat bottom
 each side of the loop. The descent runs from where they are to just above the
 container's floor, so the body is pressed where it is rather than for a fixed
 distance from wherever it was first touched. The push clamp bounds the contact.
+    With ``descend`` false the path only releases, from wherever the press
+    stopped.
     """
     positions = np.asarray(positions, dtype=np.float64)
     centre = 0.5 * (positions[0] + positions[1])
-    travel = float(centre[2]) - (TABLE_Z + FLOOR_Z + PRESS_FLOOR_CLEARANCE)
-    press_s = max(PRESS_DEPTH, travel) / PRESS_RATE
-    hold_end = press_s + PRESS_HOLD
+    travel = float(centre[2]) - (TABLE_Z + FLOOR_Z + PRESS_FLOOR_CLEARANCE) if descend else 0.0
+    press_s = max(PRESS_DEPTH, travel) / PRESS_RATE if descend else 0.0
+    hold_end = press_s + hold
     # Open while lifting. Under the 50 N press the pads are pinned into the plush
     # by mu 2 friction: opening on its own was measured to sit at 34 mm for 100
     # frames, because 5 N of jaw cannot slide 50 N of normal. Starting the rise
@@ -627,6 +640,9 @@ def run(
     shape_body = sim.model.shape_body.numpy()
     finger_bodies = np.asarray(grip.entity.bodies, dtype=np.int32)
     body_contact_seen = False
+    press_release_frame = None
+    press_depth_best = 0.0
+    press_stall = 0
     jam_streak = 0
     depth_best = 0.0
     progress_frame = 0
@@ -786,11 +802,27 @@ def run(
                 body_contact_seen = True
                 press_frame = frame + 1
                 fingers = np.array([[body_q[b][0], body_q[b][1], body_q[b][2]] for b in grip.entity.bodies])
-                grip.entity.set_trajectory(press_path(fingers, dt))
+                grip.entity.set_trajectory(press_path(fingers, dt, descend=True, hold=PRESS_HOLD))
                 print(
                     json.dumps({"press_contact_frame": press_frame, "depth_m": depth_best}),
                     flush=True,
                 )
+            # The press ends where the toy does. A descent that continues past the
+            # jam only sinks the pads into the plush and pins them there.
+            if body_contact_seen and press_release_frame is None:
+                if row["insertion_depth_m"] > press_depth_best + PRESS_STALL_STEP:
+                    press_depth_best = row["insertion_depth_m"]
+                    press_stall = 0
+                else:
+                    press_stall += 1
+                if press_stall >= PRESS_STALL_FRAMES:
+                    press_release_frame = frame + 1
+                    fingers = np.array([[body_q[b][0], body_q[b][1], body_q[b][2]] for b in grip.entity.bodies])
+                    grip.entity.set_trajectory(press_path(fingers, dt, descend=False, hold=PRESS_RELEASE_HOLD))
+                    print(
+                        json.dumps({"press_release_frame": press_release_frame, "depth_m": depth_best}),
+                        flush=True,
+                    )
             row["pressing"] = grip.entity.pressing()
             row["applied"] = grip.entity.applied_wrenches.numpy().tolist()
             row["peak_force_n"] = grip.entity.peak_force.numpy().tolist()
@@ -851,13 +883,25 @@ def run(
         steps,
         jam_frame=jam_frame,
         press_frame=press_frame,
+        press_release_frame=press_release_frame,
         video_error=video_error,
         self_contact=self_contact,
     )
 
 
 def judge(
-    out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame, press_frame, video_error, self_contact
+    out: Path,
+    diagnostics,
+    quality,
+    geometry,
+    entity,
+    steps,
+    *,
+    jam_frame,
+    press_frame,
+    press_release_frame,
+    video_error,
+    self_contact,
 ) -> dict:
     """What the run did, stated as measurements rather than as a verdict.
 
@@ -937,6 +981,7 @@ def judge(
         "weight_n": weight,
         "jammed_frame": jam_frame,
         "press_contact_frame": press_frame,
+        "press_release_frame": press_release_frame,
         "press_travel_m": max(0.0, float(press_travel)),
         "press_depth_m": max(0.0, float(press_depth)),
         "press_contact_frames": push_contact_frames,

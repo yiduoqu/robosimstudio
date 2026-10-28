@@ -19,10 +19,9 @@ drive's own clamp rather than whatever closing gap the loop's compliance leaves.
 
 Two things this scene is built to show. The rod and its post are rigid and never
 move, so nothing is scripted once the claw opens. And every jaw number is
-bounded: in the default dynamic claw the fingers carry their own mass and are
-driven by a clamped PD wrench (5 N, 0.03 N*m), so ``peak_force_n`` and
-``peak_torque_nm`` are measurements the run reports rather than consequences of
-prescribed motion.
+bounded: the two padded fingers slide on a level carrier under a 5 N jaw budget,
+and the carrier's 50 N push budget is separate. ``peak_force_n`` is the jaw peak;
+``peak_torque_nm`` is zero because a prismatic jaw cannot rotate.
 
 Geometry is derived from the mesh rather than hard-coded: the loop's hole centre
 and inner radius by an inscribed-circle fixed point over the loop's vertices, the
@@ -32,7 +31,6 @@ motion was built on.
 
 Controls, for contrast rather than for the result:
 
-    --claw kinematic   prescribed poses: unlimited jaw authority
     --no-coarse        stock VBD: no common-translation solve under load
 
 Knobs, each reported with its measured effect:
@@ -201,7 +199,7 @@ SOURCE_HASHES = {
 }
 
 
-def build_scene(*, coarse: bool, claw: str, rod_radius: float = ROD_RADIUS, mu: float | None = None):
+def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | None = None):
     for relative, expected in SOURCE_HASHES.items():
         actual = hashlib.sha256((ASSET / relative).read_bytes()).hexdigest()
         if actual != expected:
@@ -322,7 +320,6 @@ def build_scene(*, coarse: bool, claw: str, rod_radius: float = ROD_RADIUS, mu: 
     grip = scene.add(
         ParallelGripperSpec(
             name="rod_loop_gripper",
-            mode=claw,
             # The loop's widest point, which is the hole's own centre height: the
             # pads' faces come to rest on that width, and the squeeze is the aim
             # past it that the jaw drive clamps at 5 N. The pose is in the
@@ -465,13 +462,12 @@ def run(
     steps: int,
     render_every: int = 0,
     coarse: bool = True,
-    claw: str = "dynamic",
     rod_radius: float = ROD_RADIUS,
     mu: float | None = None,
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     sim, obj, grip, camera, rod, ring, geometry = build_scene(
-        coarse=coarse, claw=claw, rod_radius=rod_radius, mu=mu
+        coarse=coarse, rod_radius=rod_radius, mu=mu
     )
     entity = obj.entity
     particles = entity.particles
@@ -587,7 +583,7 @@ def run(
                 "coarse": bool(coarse),
                 "coarse_contact_gap_m": CONTACT_GAP if coarse else None,
                 "coarse_budget_m": COARSE_BUDGET if coarse else None,
-                "claw": claw,
+                "claw": "parallel",
                 "geometry": geometry,
                 "mass_kg": mass,
                 "seated_frame": seat_frame,
@@ -700,7 +696,6 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=OUTPUT / "run")
     parser.add_argument("--steps", type=int, default=round(DURATION * CONTROL_HZ))
     parser.add_argument("--render-every", type=int, default=0)
-    parser.add_argument("--claw", choices=("dynamic", "kinematic"), default="dynamic")
     parser.add_argument("--no-coarse", dest="coarse", action="store_false")
     parser.add_argument("--rod-radius", type=float, default=ROD_RADIUS, help="rod radius [m]")
     parser.add_argument("--mu", type=float, default=None, help="global soft-contact friction coefficient")
@@ -710,7 +705,6 @@ def main() -> None:
         steps=args.steps,
         render_every=args.render_every,
         coarse=args.coarse,
-        claw=args.claw,
         rod_radius=args.rod_radius,
         mu=args.mu,
     )

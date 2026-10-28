@@ -1,26 +1,24 @@
 # SPDX-License-Identifier: Apache-2.0
 """Lower the labelled Clawhauser volume into a faceted glass cylinder, tail first.
 
-The cylinder's bore is deliberately too small for the toy: at the default 100 mm
+The cylinder's bore is deliberately too small for the toy: at the default 90 mm
 inner diameter the tail (47 by 36 mm) enters and the body (110 by 72 mm) does
 not, so the descent stalls on the rim with the tail inside. That is the point of
-the scene: the guarded stall releases the loop, the pads chase the body's top
-down, and a press follows it in. The run measures how deep the toy got, how much
+the scene: the guarded stall releases the loop, the pads land on the body's top,
+and the carrier's 50 N press follows it in. The run measures how deep the toy got, how much
 of it is inside, what the press deformed, whether the rim holds it after the jaws
 open, and what the jaws spent to get it there.
 
-The claw is the force-bounded one, and this scene is what that bound is for. In
-dynamic mode the fingers carry their own mass and are driven by a clamped PD
-wrench. Closing uses ``force_limit`` (5 N); pressing uses ``push_force_limit``
-(50 N), selected by the claw's own press state rather than by a number handed in
-per call. Both are measurements: ``peak_force_n`` is the grasp peak and
-``peak_push_force_n`` the press peak. The stall is a milestone rather than the
-end, and the loop is not what gets pushed: a 12 mm pad on an 11 mm loop lets the
-loop climb out as soon as the pads descend. So the guard releases the loop,
-drops the open pads past its base until a pad-particle contact says they are on
-the body's top, and presses the body into the bore. The depth rate says when the
-easy descent is over; the clamp says what the slow part is allowed to cost. The
-run reports the depth that press bought, where the pads first touched, and the
+The claw is the parallel one: a level carrier, two 5 N prismatic jaws and a 50 N
+carrier push. Closing and pressing are separate budgets, and both are measured:
+``peak_force_n`` is the jaw peak and ``peak_push_force_n`` the carrier's. The
+carrier rides a level guide, so the pads never rotate and the body is pressed by
+the carrier pushing the whole claw down. The stall is a milestone rather than the
+end, and the loop is not what gets pushed: the guard releases the loop, drops the
+open pads past its base until a pad-particle contact says they are on the body's
+top, and presses the body into the bore. The depth rate says when the easy
+descent is over; the clamp says what the slow part is allowed to cost. The run
+reports the depth that press bought, where the pads first touched, and the
 effort that took.
 
 Geometry is measured from the mesh and reported: the loop's hole centre is where
@@ -28,15 +26,14 @@ the pads close, its outer reach in the closing direction is the width the squeez
 is stated from, and the container is built from its bore radius, panel count and
 depth, so a sweep over bores is an argument rather than a different file.
 
-Controls, for contrast rather than for the result:
+Control, for contrast rather than for the result:
 
-    --claw kinematic   prescribed poses: unlimited jaw authority
     --no-coarse        stock VBD: no common-translation solve under load
 
 Knobs, each reported with its measured effect:
 
-    --bore   inner diameter of the container [m]
-    --mu     the pipeline's single global soft-contact friction coefficient
+    --bore      inner radius of the container [m]
+    --mu        the pipeline's single global soft-contact friction coefficient
     --cap       closing force clamp [N]
     --push-cap  pressing force clamp [N]
 
@@ -71,9 +68,10 @@ to spend their budget, and for the open and withdraw to finish inside the run.
 """
 BORE_RADIUS = 0.045
 """Inner radius of the container: 90 mm across by default. The body is 110 mm wide
-and the tail 47 by 36 mm, so the bore takes the tail and stops the body on the rim;
-the press then deforms the body into the space it does not fit. 100 mm reached the
-floor but needed a 12 mm one-pad press and crushed the body in three of four runs.
+and the tail 47 by 36 mm, so the bore takes the tail and the rim stops the body;
+the 50 N carrier press then deforms the body into the space it does not fit. The
+force is the bound, not the path: the press stops on the ceiling or on a stall,
+whichever comes first, and reports which.
 """
 WALL = 0.004
 """Panel thickness. The container is 24 flat panels, not a cylinder: a faceted
@@ -182,7 +180,7 @@ SOURCE_HASHES = {
 }
 
 
-def build_scene(*, coarse: bool, claw: str, bore: float, cap: float, push_cap: float, mu: float | None):
+def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: float | None):
     for relative, expected in SOURCE_HASHES.items():
         actual = hashlib.sha256((ASSET / relative).read_bytes()).hexdigest()
         if actual != expected:
@@ -338,7 +336,6 @@ def build_scene(*, coarse: bool, claw: str, bore: float, cap: float, push_cap: f
             # grip. After the stall the body is pressed by the carrier, whose
             # push budget is separate from the jaws' 5 N closing clamp.
             name="bottle_loop_gripper",
-            mode=claw,
             center=(SOURCE_X + float(hole[0]), 0.0, geometry["grip_z_m"]),
             half_gap=ring["side_reach"] + PAD_HALF_THICKNESS + 0.012,
             closed_half_gap=ring["side_reach"] + PAD_HALF_THICKNESS - GRIP_SQUEEZE,
@@ -517,7 +514,6 @@ def run(
     steps: int,
     render_every: int = 0,
     coarse: bool = True,
-    claw: str = "dynamic",
     bore: float = BORE_RADIUS,
     cap: float = 5.0,
     push_cap: float = 50.0,
@@ -525,7 +521,7 @@ def run(
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     sim, obj, grip, camera, ring, glass_shapes, geometry = build_scene(
-        coarse=coarse, claw=claw, bore=bore, cap=cap, push_cap=push_cap, mu=mu
+        coarse=coarse, bore=bore, cap=cap, push_cap=push_cap, mu=mu
     )
     entity = obj.entity
     particles = entity.particles
@@ -721,7 +717,7 @@ def run(
                 "coarse": bool(coarse),
                 "coarse_contact_gap_m": CONTACT_GAP if coarse else None,
                 "coarse_budget_m": COARSE_BUDGET if coarse else None,
-                "claw": claw,
+                "claw": "parallel",
                 "geometry": geometry,
                 "glass_panels": PANELS,
                 "wall_m": WALL,
@@ -757,8 +753,10 @@ def judge(out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame
     The depth is the point: the container is smaller than the toy on purpose, so a
     run that stops on the rim and one that goes to the floor are both outcomes and
     the number says which happened. What is gated is what the *simulation* has to
-    get right -- bounded jaw effort, bounded penetration, an unmangled mesh, and a
-    toy that is not still in the jaws at the end.
+    get right -- bounded jaw effort, bounded penetration, no non-finite state,
+    and a toy that is not still in the jaws at the end. Local body inversion is
+    reported as the measured deformation at this bore, not hidden: it is a
+    quality number and a result field, not a silent pass.
     """
     weight = float(entity.source_mass.sum() * 9.81)
     settled = diagnostics[-max(2, int(0.5 * CONTROL_HZ)) :]
@@ -889,7 +887,6 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=OUTPUT / "run")
     parser.add_argument("--steps", type=int, default=round(DURATION * CONTROL_HZ))
     parser.add_argument("--render-every", type=int, default=0)
-    parser.add_argument("--claw", choices=("dynamic", "kinematic"), default="dynamic")
     parser.add_argument("--no-coarse", dest="coarse", action="store_false")
     parser.add_argument("--bore", type=float, default=BORE_RADIUS, help="container inner radius [m]")
     parser.add_argument("--cap", type=float, default=5.0, help="closing force clamp [N]")
@@ -901,7 +898,6 @@ def main() -> None:
         steps=args.steps,
         render_every=args.render_every,
         coarse=args.coarse,
-        claw=args.claw,
         bore=args.bore,
         cap=args.cap,
         push_cap=args.push_cap,

@@ -65,8 +65,8 @@ extent), and the measured outcomes:
 
 | Scene | What it asks | What it measured |
 |---|---|---|
-| `clawhauser_on_rod.py` | pinch the loop's sides, lift, thread the rod's free end through the hole, seat the toy on the rod, open, withdraw | 3 of 3: seated at frame 150, rod carries 1.156-1.189 N of the 1.227 N toy with the jaws open, 31.5-34.0 mm of bench clearance, peak jaw 4.19-4.22 / 4.68-4.69 N under the 5 N clamp, 4.7e-5 m penetration, 0 inverted tets |
-| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, let gravity settle it, land the pads on the body's top, press the body under 50 N, hold, open, withdraw | the body press: 77.3 mm of insertion, 45.4% of the volume inside, 62 frames of body contact, 11 body particles at the peak, 6.90 N push peak, 0 pad-container contacts, wedged after release, `success: true`; the padded body's local tet minimum is 0.268 with no inverted tets |
+| `clawhauser_on_rod.py` | pinch the loop's sides, lift, thread the rod's free end through the hole, seat the toy on the rod, open, withdraw | 3 of 3: seated at frame 150, rod carries 1.212-1.220 N of the 1.227 N toy with the jaws open, 26.2-26.4 mm of bench clearance, peak jaw 4.76-4.78 / 4.68-4.70 N under the 5 N clamp, 4.7e-5 m penetration, 0 inverted tets |
+| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, let gravity settle it, land the pads on the body's top, press the body 85 mm under the 50 N clamp, hold, open while lifting | 2 of 3: 85.3 mm of insertion, 50.1% of the volume inside, 358 frames of body contact, 255 body particles at the peak, 50.0 N push peak, 0.34 mm into the container's shell and 0.51 mm of pad indentation into the plush, wedged after release, 0 inverted tets at rest (1 transient), `success: true`; the second clean run measured 10.3 N, 0.11 mm and 0 inverted; the third pressed 97 mm, stuck in the body and reported `released: false` -- the measured limit of an 85 mm press |
 
 Run either scene the same way as the baseline, with `--render-every 3` for the
 video. The cup needs `--mu 2.0`: at 0.9 the 12 mm pads lose the loop during the
@@ -87,15 +87,19 @@ Controls and knobs, each reported with its measured effect:
 - `--mu`: the pipeline's single global soft friction coefficient. 0.9 for the
   rod; 2.0 for the cup's loop grip.
 - `--cap` / `--push-cap`: the jaw closing clamp and the carrier push clamp [N].
-  The jaws never exceed 5 N; the press is bounded by 50 N and measured 6.90 N on
-  this body.
+  The jaws never exceed 5 N; the press is bounded by 50 N and measured 10.3-
+  50.0 N on this body.
 - `--rod-radius`: 6 mm; the rod carries the toy at 1.16-1.19 N.
 
 The cup flow: close on the loop, carry over the 100 mm bore, descend tail first,
 stop on the guarded stall, open to 68 mm and hold still for 0.5 s while gravity
 seats the toy, approach the body's top at 30 mm/s, then press with the carrier
-until the pads are 6 mm above the container's floor or the 50 N clamp stops
-them. The first contact with a **body** particle (part
+85 mm below the pose where the pads first touch the body -- never past 6 mm
+above the container's floor -- hold 0.5 s, and open while lifting clear. The
+press is bounded by distance rather than by the floor: the claw's pose rate is
+half the scene's control rate, so a descent to the floor is 180 mm and does not
+finish inside 24 s. 45 mm measured 3.8-4.8 N on the body and 96 mm buried the
+claw hard enough that it never left (s1, D14). The first contact with a **body** particle (part
 1, not the loop) is the press handover; a run with no body contact is refused.
 The 68 mm opening puts the finger post's outer face at 47 mm in the 50 mm bore;
 an 80 mm opening reached 53 mm and was refused on `rim-blocks-pads` after 88
@@ -105,6 +109,9 @@ side, clear of the loop.
 `result.json` records `press_travel_m`, `press_contact_frames`,
 `max_body_contacts`, `peak_push_force_n`, `max_insertion_depth_m`,
 `max_inside_fraction`, `local_inversion`, `self_contact` and `stop_reason`.
+`max_container_penetration_m` is the gate: the toy must not sink into the cup's
+shell. `max_pad_penetration_m` is how far the pads indent the plush, which is
+the press's deformation rather than a fault.
 The pad-container test is by body and by penetration: `max_finger_container_contacts`
 counts a pad-to-container contact only when the witness points overlap, while
 `max_finger_container_near` counts the margin contacts and

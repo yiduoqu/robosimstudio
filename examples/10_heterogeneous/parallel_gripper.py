@@ -232,7 +232,9 @@ class ParallelGripperSpec:
     pad_half_height: float = 0.006
     post_half_x: float = 0.005
     post_half_y: float = 0.006
-    post_half_z: float = 0.015
+    post_half_z: float = 0.021
+    """Half the finger post's height. It runs from the pad's bottom face to the
+    carrier's underside, so the pad rests flush against the post's inner face."""
     carrier_half_extents: tuple[float, float, float] = (0.060, 0.015, 0.009)
     carrier_offset_z: float = 0.045
     carrier_mass: float = 0.2
@@ -322,11 +324,14 @@ class ParallelGripper(rss.Entity):
             color=(0.16, 0.30, 0.39),
             label=f"{spec.name}_body",
         )
-        # The finger's COM is the pad + post assembly above the pad centre.
+        # The finger's COM is the pad + post assembly, the post centred outboard
+        # of the pad and from the pad's bottom face up to the carrier.
         pad_volume = 8.0 * spec.pad_half_thickness * spec.pad_half_width * spec.pad_half_height
         post_volume = 8.0 * spec.post_half_x * spec.post_half_y * spec.post_half_z
-        com_z = post_volume * (spec.pad_half_height + spec.post_half_z) / (pad_volume + post_volume)
-        com_x = post_volume * (spec.pad_half_thickness + spec.post_half_x) / (pad_volume + post_volume)
+        post_center_z = spec.post_half_z - spec.pad_half_height
+        post_center_x = spec.pad_half_thickness + spec.post_half_x
+        com_z = post_volume * post_center_z / (pad_volume + post_volume)
+        com_x = post_volume * post_center_x / (pad_volume + post_volume)
         finger_inertia = (
             spec.finger_mass
             / 3
@@ -400,7 +405,7 @@ class ParallelGripper(rss.Entity):
                     wp.vec3(
                         sign * (spec.pad_half_thickness + spec.post_half_x),
                         0.0,
-                        spec.pad_half_height + spec.post_half_z,
+                        spec.post_half_z - spec.pad_half_height,
                     ),
                     wp.quat_identity(),
                 ),

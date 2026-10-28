@@ -3,19 +3,19 @@
 
 The cylinder's bore is deliberately too small for the toy: at the default 60 mm
 inner diameter the tail (47 by 36 mm) enters and the body (110 by 72 mm) does
-not, so the descent ends on the rim with the tail inside. That is the point of
-the scene, and it is measured rather than asserted -- how deep the toy got, how
-much of it is inside, whether the rim holds it after the jaws open, and what the
-jaws spent to get it there.
+not, so the descent stalls on the rim with the tail inside. That is the point of
+the scene: the guarded stall hands over to a slow press, and the run measures
+how deep the toy got, how much of it is inside, what the press deformed, whether
+the rim holds it after the jaws open, and what the jaws spent to get it there.
 
 The claw is the force-bounded one, and this scene is what that bound is for. In
 dynamic mode the fingers carry their own mass and are driven by a clamped PD
 wrench, so the push the toy receives is at most the clamp and ``peak_force_n`` is
-a measurement. The scene reports the effort against the achieved depth: a jaw
-pressing at its cap while the toy has stopped moving is a jam, and the descent
-stops there rather than grinding -- a guarded move again, this time on the
-object's own depth rate instead of on a contact force, because the force signal
-is exactly the one that stays at the cap when something is stuck.
+a measurement. The stall is a milestone rather than the end: a jaw at its cap on
+a compressible volume keeps paying, so the guard hands the same closed grip a
+slow press toward the floor. The depth rate says when the easy descent is over;
+the clamp says what the slow part is allowed to cost. The run reports the depth
+that press bought and the effort that took.
 
 Geometry is measured from the mesh and reported: the loop's hole centre is where
 the pads close, its outer reach in the closing direction is the width the squeeze
@@ -58,9 +58,9 @@ ASSET = Path(__file__).resolve().parent / "assets" / "clawhauser"
 OUTPUT = Path(__file__).resolve().parents[2] / "outputs" / "clawhauser_stuff_into_bottle"
 CONTROL_HZ = 30
 SUBSTEPS = 20
-DURATION = 10.5
-"""Long enough for the guarded descent to stop early or late and still leave the
-last half second still, so the window the outcome is judged on is a quiet one.
+DURATION = 13.0
+"""Long enough for the guarded descent to stall, for the press to spend its
+budget, and for the open and withdraw that follow to finish inside the run.
 """
 BORE_RADIUS = 0.030
 """Inner radius of the container: 60 mm across by default. The tail is 47 by 36 mm
@@ -114,10 +114,20 @@ PAD_HALF_THICKNESS = 0.003
 """The pad box's half-extent along the closing axis, as ``gripper.py`` builds it."""
 OPENED_HALF_GAP = 0.045
 """How far apart the jaws open once the toy is in place."""
-JAM_HOLD = 1.0
+PRESS_RATE = 0.012
+"""Descent speed once the toy has stalled [m/s]. A third of the approach: the
+claw keeps its clamp on the loop and the toy has time to deform into the bore
+instead of bouncing off the rim.
+"""
+PRESS_MAX = 0.040
+"""Furthest the pads press after the stall [m]. Deeper than the bore's remaining
+depth on purpose: the pads follow the loop, and a compressible toy lets them go
+on after its lowest point has reached the floor.
+"""
+PRESS_HOLD = 0.5
 JAM_OPEN = 0.6
 JAM_WITHDRAW = 0.5
-"""After the guarded stop: hold the toy still, open, and rise clear."""
+"""After the press: hold the squeeze, open, and rise clear."""
 WITHDRAW_Z = 0.060
 """How far the opened jaws rise to clear the toy: straight up, and clear of the
 rim, so the withdrawal cannot drag the toy out of the container it just entered.
@@ -403,25 +413,30 @@ def waypoints(grip, capacity: int, dt: float, geometry: dict) -> np.ndarray:
     return poses
 
 
-def after_jam(positions: np.ndarray, dt: float, closed_half_gap: float) -> np.ndarray:
-    """The path the jam guard hands over to: hold, open, and rise clear.
+def after_jam(positions: np.ndarray, dt: float, closed_half_gap: float, press_m: float) -> np.ndarray:
+    """The path the jam guard hands over to: keep pressing, hold, open, rise.
 
-    Built from where the fingers actually are when the object stops moving, so the
-    hold is a hold and not a resumed descent -- but the gap it holds is the one the
-    trajectory was aiming at, not the gap the fingers are at. Commanding the
-    measured gap lets the squeeze go, and a released loop slides out of the pinch.
+    Built from where the fingers actually are when the object stops moving, and
+    from the depth that is left: the pads drive down at ``PRESS_RATE`` for
+    ``press_m``, hold the squeeze, then open and rise clear. The gap they hold is
+    the one the trajectory was aiming at, not the gap the fingers are at --
+    commanding the measured gap lets the squeeze go, and a released loop slides
+    out of the pinch.
     """
     positions = np.asarray(positions, dtype=np.float64)
-    count = int(np.ceil((JAM_HOLD + JAM_OPEN + JAM_WITHDRAW) / dt)) + 2
+    press_s = max(0.0, press_m) / PRESS_RATE
+    count = int(np.ceil((press_s + PRESS_HOLD + JAM_OPEN + JAM_WITHDRAW) / dt)) + 2
     centre = 0.5 * (positions[0] + positions[1])
     poses = np.zeros((count, 2, 7), dtype=np.float32)
     poses[:, :, 3:] = (0.0, 0.0, 0.0, 1.0)
+    open_start = press_s + PRESS_HOLD
     for index in range(count):
         time = index * dt
-        gap = closed_half_gap + (OPENED_HALF_GAP - closed_half_gap) * smooth(time, JAM_HOLD, JAM_HOLD + JAM_OPEN)
-        rise = WITHDRAW_Z * smooth(time, JAM_HOLD + JAM_OPEN, JAM_HOLD + JAM_OPEN + JAM_WITHDRAW)
-        poses[index, 0, :3] = centre + np.array([-gap, 0.0, rise])
-        poses[index, 1, :3] = centre + np.array([gap, 0.0, rise])
+        gap = closed_half_gap + (OPENED_HALF_GAP - closed_half_gap) * smooth(time, open_start, open_start + JAM_OPEN)
+        press = -PRESS_RATE * min(time, press_s)
+        rise = WITHDRAW_Z * smooth(time, open_start + JAM_OPEN, open_start + JAM_OPEN + JAM_WITHDRAW)
+        poses[index, 0, :3] = centre + np.array([-gap, 0.0, press + rise])
+        poses[index, 1, :3] = centre + np.array([gap, 0.0, press + rise])
     return poses
 
 
@@ -487,6 +502,7 @@ def run(
 
     diagnostics = []
     jam_frame = None
+    press_m = 0.0
     jam_streak = 0
     depth_best = 0.0
     progress_frame = 0
@@ -572,8 +588,9 @@ def run(
             if jam_frame is None and jam_streak > 0:
                 jam_frame = frame + 1
                 fingers = np.array([[body_q[b][0], body_q[b][1], body_q[b][2]] for b in grip.entity.bodies])
-                grip.entity.set_trajectory(after_jam(fingers, dt, grip.spec.closed_half_gap))
-                print(json.dumps({"jam_frame": jam_frame, "depth_m": depth_best}), flush=True)
+                press_m = min(PRESS_MAX, max(0.0, (RIM_Z - FLOOR_Z) - depth_best) + 0.010)
+                grip.entity.set_trajectory(after_jam(fingers, dt, grip.spec.closed_half_gap, press_m))
+                print(json.dumps({"jam_frame": jam_frame, "depth_m": depth_best, "press_m": press_m}), flush=True)
             if claw == "dynamic":
                 row["applied"] = grip.entity.applied_wrenches.numpy().tolist()
                 row["peak_force_n"] = grip.entity.peak_force.numpy().tolist()
@@ -622,10 +639,12 @@ def run(
         )
         + "\n"
     )
-    return judge(out, diagnostics, quality, geometry, entity, steps, jam_frame=jam_frame, video_error=video_error)
+    return judge(
+        out, diagnostics, quality, geometry, entity, steps, jam_frame=jam_frame, press_m=press_m, video_error=video_error
+    )
 
 
-def judge(out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame, video_error) -> dict:
+def judge(out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame, press_m, video_error) -> dict:
     """What the run did, stated as measurements rather than as a verdict.
 
     The depth is the point: the container is smaller than the toy on purpose, so a
@@ -644,6 +663,18 @@ def judge(out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame
     # The pads' own clearance over the rim, which is what the container can block:
     # this bore lets them in, a deeper one need not.
     pad_z = min(min(row["finger_positions"][side][2] for side in (0, 1)) for row in diagnostics) - (TABLE_Z + RIM_Z)
+    # How far the pads actually drove down after the stall: the press is bounded
+    # by ``press_m`` in the trajectory, but the dynamic fingers can lag it, so the
+    # commanded budget and the travelled distance are both reported.
+    press_travel = 0.0
+    stalled = next((row for row in diagnostics if jam_frame is not None and row["frame"] >= jam_frame), None)
+    if stalled is not None:
+        press_travel = max(
+            stalled["finger_positions"][side][2] - row["finger_positions"][side][2]
+            for row in diagnostics
+            if row["frame"] >= stalled["frame"]
+            for side in (0, 1)
+        )
     peak_force = max((max(row["peak_force_n"]) for row in diagnostics if "peak_force_n" in row), default=0.0)
     peak_torque = max((max(row["peak_torque_nm"]) for row in diagnostics if "peak_torque_nm" in row), default=0.0)
     quality_read = quality.read()
@@ -668,6 +699,8 @@ def judge(out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame
         "geometry": geometry,
         "weight_n": weight,
         "jammed_frame": jam_frame,
+        "press_budget_m": press_m,
+        "press_travel_m": max(0.0, float(press_travel)),
         "max_insertion_depth_m": reach,
         "max_insertion_depth_frame": deepest["frame"],
         "max_below_rim_fraction": max(row["below_rim_fraction"] for row in diagnostics),

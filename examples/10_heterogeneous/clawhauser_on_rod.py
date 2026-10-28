@@ -54,9 +54,9 @@ from pathlib import Path
 
 import newton
 import numpy as np
-from gripper import ScriptedGripperSpec
 from loop_geometry import ring_geometry, smooth
 from mesh_quality import MeshQuality, penetration
+from parallel_gripper import ParallelGripperSpec
 
 import robosimstudio as rss
 from robosimstudio_materials.heterogeneous import HeterogeneousSoftSpec, load_labelled_tets
@@ -320,12 +320,12 @@ def build_scene(*, coarse: bool, claw: str, rod_radius: float = ROD_RADIUS, mu: 
         )
     )
     grip = scene.add(
-        ScriptedGripperSpec(
+        ParallelGripperSpec(
             name="rod_loop_gripper",
             mode=claw,
             # The loop's widest point, which is the hole's own centre height: the
             # pads' faces come to rest on that width, and the squeeze is the aim
-            # past it that the drive clamps at 5 N. The pose is in the
+            # past it that the jaw drive clamps at 5 N. The pose is in the
             # work-surface frame, like the statics above and every other entity's
             # -- an absolute height here would be lifted by the frame twice.
             center=(SOURCE_X + float(hole[0]), 0.0, geometry["grip_z_m"]),
@@ -333,8 +333,6 @@ def build_scene(*, coarse: bool, claw: str, rod_radius: float = ROD_RADIUS, mu: 
             closed_half_gap=ring["side_reach"] + PAD_HALF_THICKNESS - GRIP_SQUEEZE,
             pad_half_thickness=PAD_HALF_THICKNESS,
             pad_half_width=0.006,
-            ledge=False,
-            carrier=True,
             duration=DURATION,
             control_hz=CONTROL_HZ,
             substeps=SUBSTEPS,
@@ -559,10 +557,9 @@ def run(
                 fingers = np.array([[body_q[b][0], body_q[b][1], body_q[b][2]] for b in grip.entity.bodies])
                 grip.entity.set_trajectory(after_seat(fingers, dt, grip.spec.closed_half_gap))
                 print(json.dumps({"seat_frame": seat_frame, "rod_support_n": row["rod_support_n"]}), flush=True)
-            if claw == "dynamic":
-                row["applied"] = grip.entity.applied_wrenches.numpy().tolist()
-                row["peak_force_n"] = grip.entity.peak_force.numpy().tolist()
-                row["peak_torque_nm"] = grip.entity.peak_torque.numpy().tolist()
+            row["applied"] = grip.entity.applied_wrenches.numpy().tolist()
+            row["peak_force_n"] = grip.entity.peak_force.numpy().tolist()
+            row["peak_torque_nm"] = grip.entity.peak_torque.numpy().tolist()
             if frame % 15 == 0 or frame == steps - 1:
                 print(json.dumps(row), flush=True)
             if videos is not None and frame % render_every == 0:

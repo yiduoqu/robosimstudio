@@ -5,11 +5,11 @@ The cylinder's bore is deliberately too small for the toy: at the default 90 mm
 inner diameter the tail (47 by 36 mm) enters and the body (110 by 72 mm) does
 not, so the descent stalls on the rim with the tail inside. That is the point of
 the scene: the guarded stall releases the loop, the pads land on the body's top,
-and the carrier's 50 N press follows it in. The run measures how deep the toy got, how much
+and the carrier's 200 N press follows it in. The run measures how deep the toy got, how much
 of it is inside, what the press deformed, whether the rim holds it after the jaws
 open, and what the jaws spent to get it there.
 
-The claw is the parallel one: a level carrier, two 5 N prismatic jaws and a 50 N
+The claw is the parallel one: a level carrier, two 5 N prismatic jaws and a 200 N
 carrier push. Closing and pressing are separate budgets, and both are measured:
 ``peak_force_n`` is the jaw peak and ``peak_push_force_n`` the carrier's. The
 carrier rides a level guide, so the pads never rotate and the body is pressed by
@@ -70,7 +70,7 @@ finish inside the run.
 BORE_RADIUS = 0.050
 """Inner radius of the container: 100 mm across by default. The body is 110 mm
 wide and the tail 47 by 36 mm, so the bore takes the tail and the rim stops the
-body; the 50 N carrier press then deforms the body into the space it does not
+body; the 200 N carrier press then deforms the body into the space it does not
 fit. 90 mm was measured to expel the toy off the bench instead of wedging it;
 the 100 mm run is the b9 reference the user asked to keep.
 """
@@ -148,8 +148,11 @@ PRESS_RATE = 0.020
 it drives at [m, m/s]. Bounded by distance, not by the container's floor: the
 descent to the floor is 180 mm, and a path that long is still descending when
 the run ends, so the claw never opens or leaves. Measured, 45 mm of press put
-only 3.8-4.8 N on the body (the plush yields), 96 mm put 50 N and buried the
-claw; 85 mm is the span between them that still finishes inside the run.
+only 3.8-4.8 N on the body (the plush yields), 96 mm buried the claw hard
+enough that it never left at the then-50 N clamp; 85 mm is the span between them
+that still finishes inside the run. At the 200 N clamp the pads reach the 85 mm
+travel in 3 of 3 runs and peak at 9.5-63.0 N, so the clamp is no longer what
+stops them: 50 N reached it (peak 50.0 N, 2 of 3) and 100 N stalled 2 of 3.
 """
 PRESS_FLOOR_CLEARANCE = 0.006
 """How far above the container's floor the pads stop pressing [m], so a press
@@ -568,7 +571,7 @@ def run(
     coarse: bool = True,
     bore: float = BORE_RADIUS,
     cap: float = 5.0,
-    push_cap: float = 50.0,
+    push_cap: float = 200.0,
     mu: float | None = None,
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
@@ -1031,7 +1034,7 @@ def main() -> None:
     parser.add_argument("--no-coarse", dest="coarse", action="store_false")
     parser.add_argument("--bore", type=float, default=BORE_RADIUS, help="container inner radius [m]")
     parser.add_argument("--cap", type=float, default=5.0, help="closing force clamp [N]")
-    parser.add_argument("--push-cap", type=float, default=50.0, help="pressing force clamp [N]")
+    parser.add_argument("--push-cap", type=float, default=200.0, help="pressing force clamp [N]")
     parser.add_argument("--mu", type=float, default=None, help="global soft-contact friction coefficient")
     args = parser.parse_args()
     run(

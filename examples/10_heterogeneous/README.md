@@ -53,8 +53,11 @@ posts on native prismatic slides, and 6 x 12 x 12 mm pad inserts on the posts'
 inner faces. Each post runs from the pad's bottom face to the carrier's
 underside, so the pad sits flush in the post and the finger is one column. The pads cannot rotate, and there is no ledge: the pad face and its
 friction are the only grip aids. The jaws close under a 5 N clamp; the carrier
-is the press path under a separate 50 N clamp, so `peak_force_n` is the jaw peak
-and `peak_push_force_n` the press peak. The toy's self-contact is on (2 mm
+is the press path under a separate 200 N clamp, so `peak_force_n` is the jaw peak
+and `peak_push_force_n` the press peak. The 200 N is the top of a measured
+ladder: 50 N reached its clamp (peak 50.0 N) and passed 2 of 3, 100 N passed 1 of
+3, and at 200 N the pads follow their path without reaching the clamp
+(9.5-63.0 N) and pass 3 of 3. The toy's self-contact is on (2 mm
 margin, 6 mm rest-shape exclusion), and the coarse common-translation solve
 stays the pipeline's weight fix. Both scenes print and record the self-contact
 state, and both refuse particle-body attachments.
@@ -66,15 +69,15 @@ extent), and the measured outcomes:
 | Scene | What it asks | What it measured |
 |---|---|---|
 | `clawhauser_on_rod.py` | pinch the loop's sides, lift, thread the rod's free end through the hole, seat the toy on the rod, open, withdraw | 3 of 3: seated at frame 150, rod carries 1.212-1.220 N of the 1.227 N toy with the jaws open, 26.2-26.4 mm of bench clearance, peak jaw 4.76-4.78 / 4.68-4.70 N under the 5 N clamp, 4.7e-5 m penetration, 0 inverted tets |
-| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, let gravity settle it, land the pads on the body's top, press the body 85 mm under the 50 N clamp, hold, open while lifting | 2 of 3: 85.3 mm of insertion, 50.1% of the volume inside, 358 frames of body contact, 255 body particles at the peak, 50.0 N push peak, 0.34 mm into the container's shell and 0.51 mm of pad indentation into the plush, wedged after release, 0 inverted tets at rest (1 transient), `success: true`; the second clean run measured 10.3 N, 0.11 mm and 0 inverted; the third pressed 97 mm, stuck in the body and reported `released: false` -- the measured limit of an 85 mm press |
+| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, let gravity settle it, land the pads on the body's top, press the body 85 mm under the 200 N clamp, hold, open while lifting | 3 of 3: 85.3 mm of insertion, 46.1-48.2% of the volume inside, 401-403 frames of body contact, 188-271 body particles at the peak, 60.5-63.0 N push peak under the 200 N clamp, 0.12-0.67 mm into the container's shell and 0.56-0.67 mm of pad indentation into the plush, wedged after release, 0 inverted tets in 2 runs (1 transient in the third), `success: true`; at 50 N the same press passed 2 of 3, and the run that stuck pressed 97 mm and reported `released: false` |
 
 Run either scene the same way as the baseline, with `--render-every 3` for the
-video. The cup needs `--mu 2.0`: at 0.9 the 12 mm pads lose the loop during the
-carry (finger contacts 5, 4, 3, 1, 0 over 2.6-4.6 s and the toy on the bench).
+video. Both run at the pipeline's default `mu`; the cup's carry held at 0.9 in
+every 200 N run.
 
 ```bash
 python examples/10_heterogeneous/clawhauser_on_rod.py  --out OUT --render-every 3
-python examples/10_heterogeneous/clawhauser_stuff_into_bottle.py --out OUT --render-every 3 --mu 2.0
+python examples/10_heterogeneous/clawhauser_stuff_into_bottle.py --out OUT --render-every 3
 ```
 
 Controls and knobs, each reported with its measured effect:
@@ -87,8 +90,8 @@ Controls and knobs, each reported with its measured effect:
 - `--mu`: the pipeline's single global soft friction coefficient. 0.9 for the
   rod; 2.0 for the cup's loop grip.
 - `--cap` / `--push-cap`: the jaw closing clamp and the carrier push clamp [N].
-  The jaws never exceed 5 N; the press is bounded by 50 N and measured 10.3-
-  50.0 N on this body.
+  The jaws never exceed 5 N; the press is bounded by distance at the default
+  200 N and measured 9.5-63.0 N on this body.
 - `--rod-radius`: 6 mm; the rod carries the toy at 1.16-1.19 N.
 
 The cup flow: close on the loop, carry over the 100 mm bore, descend tail first,
@@ -128,17 +131,18 @@ pad positions.
    iterations mangles this volume within 0.1 s of it standing on the bench;
    the qualified pair holds min J ≥ 0.48 and 4.9e-5 m of penetration. Both
    scenes report the plain-VBD control (`--no-coarse`).
-2. **The 12 mm pads need friction, not ledges.** At `mu = 0.9` the cup's carry
-   loses the loop in about two seconds; at 2.0 the rod and cup holds hold. The
-   rod never needed the higher value because the rod takes the toy's weight
-   within 2 s of the load coming on.
+2. **The 12 mm pads need friction, not ledges.** Every 200 N cup run and all
+   three rod runs carry at the pipeline's default `mu = 0.9`; an earlier claw
+   that lost the loop on the way to the cup needed 2.0.
 3. **The claw's footprint bounds the cup.** The 34 mm pad half-gap puts the
    post 3 mm from the 50 mm bore wall; at 40 mm the post touched. The body is
    110 mm wide in a 100 mm bore, so the press deforms its lower rim; local tet
    inversion is the measured deformation and is reported, not gated away.
 4. **The press is the carrier's, not the jaws'.** The jaws stay under 5 N; the
-   carrier's 50 N budget is the press. A 12 mm patch on each shoulder at 6.90 N
-   is enough to seat the 77.3 mm insertion; a wider pad face is not needed.
+   carrier's 200 N budget is the press, and at that cap the 85 mm path, not the
+   clamp, ends it (peak 60.5-63.0 N). At 50 N the clamp bound the press: the
+   carrier lagged its path, the body did not travel with the pads, and 1 of 3
+   runs left the pads inside the plush with `released: false`.
 5. **The clamp is applied in float32**, so a run that sits on it reports the
    cap's own representation: 5.0000005 against a float64 5.0. The gates allow
    one part in a million for that, and nothing more.

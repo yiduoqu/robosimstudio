@@ -257,6 +257,14 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
     common = {
         "iterations": 12,
         "particle_enable_self_contact": True,
+        # Millimetre-scale self-contact: the solver's own default margin is
+        # 0.2 m, which makes every particle pair touch and the toy explode.
+        "particle_self_contact_radius": 0.002,
+        "particle_self_contact_margin": 0.002,
+        "particle_topological_contact_filter_threshold": 2,
+        "particle_rest_shape_contact_exclusion_radius": 0.0,
+        "particle_vertex_contact_buffer_size": 32,
+        "particle_edge_contact_buffer_size": 64,
         "particle_enable_tile_solve": False,
         "rigid_body_particle_contact_buffer_size": 4096,
     }

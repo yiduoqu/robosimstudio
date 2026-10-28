@@ -257,7 +257,7 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
 
     common = {
         "iterations": 12,
-        "particle_enable_self_contact": False,
+        "particle_enable_self_contact": True,
         "particle_enable_tile_solve": False,
         "rigid_body_particle_contact_buffer_size": 4096,
     }
@@ -539,6 +539,14 @@ def run(
     # from a loop contact: the loop sits between the pads on the way down.
     part_of_particle = np.zeros(len(particles), dtype=np.int32)
     part_of_particle[tets] = entity.tet_part_labels[:, None]
+    solver = sim.pipeline.program.solver
+    self_contact = {
+        "enabled": bool(getattr(solver, "particle_enable_self_contact", False)),
+        "margin_m": float(getattr(solver, "particle_self_contact_margin", 0.0)),
+    }
+    if not self_contact["enabled"]:
+        raise RuntimeError("self-contact is off in the VBD solver: the toy would not fold on itself")
+    print(json.dumps({"self_contact": self_contact}), flush=True)
     quality = MeshQuality(sim, entity)
     dt = 1.0 / (CONTROL_HZ * SUBSTEPS)
     plan = waypoints(grip, grip.entity.capacity, dt, geometry)
@@ -736,6 +744,7 @@ def run(
                 "coarse_contact_gap_m": CONTACT_GAP if coarse else None,
                 "coarse_budget_m": COARSE_BUDGET if coarse else None,
                 "claw": "parallel",
+                "self_contact": self_contact,
                 "geometry": geometry,
                 "glass_panels": PANELS,
                 "wall_m": WALL,
@@ -762,10 +771,13 @@ def run(
         jam_frame=jam_frame,
         press_frame=press_frame,
         video_error=video_error,
+        self_contact=self_contact,
     )
 
 
-def judge(out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame, press_frame, video_error) -> dict:
+def judge(
+    out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame, press_frame, video_error, self_contact
+) -> dict:
     """What the run did, stated as measurements rather than as a verdict.
 
     The depth is the point: the container is smaller than the toy on purpose, so a
@@ -837,6 +849,7 @@ def judge(out: Path, diagnostics, quality, geometry, entity, steps, *, jam_frame
         stop = "object-jammed"
     result = {
         "geometry": geometry,
+        "self_contact": self_contact,
         "weight_n": weight,
         "jammed_frame": jam_frame,
         "press_contact_frame": press_frame,

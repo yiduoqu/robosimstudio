@@ -263,7 +263,7 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
 
     common = {
         "iterations": 12,
-        "particle_enable_self_contact": False,
+        "particle_enable_self_contact": True,
         "particle_enable_tile_solve": False,
         "rigid_body_particle_contact_buffer_size": 4096,
     }
@@ -473,6 +473,14 @@ def run(
     particles = entity.particles
     tets = entity.source_tets
     loop_ids = particles[ring["loop_ids"]]
+    solver = sim.pipeline.program.solver
+    self_contact = {
+        "enabled": bool(getattr(solver, "particle_enable_self_contact", False)),
+        "margin_m": float(getattr(solver, "particle_self_contact_margin", 0.0)),
+    }
+    if not self_contact["enabled"]:
+        raise RuntimeError("self-contact is off in the VBD solver: the toy would not fold on itself")
+    print(json.dumps({"self_contact": self_contact}), flush=True)
     quality = MeshQuality(sim, entity)
     dt = 1.0 / (CONTROL_HZ * SUBSTEPS)
     grip.entity.set_trajectory(waypoints(grip, grip.entity.capacity, dt, geometry))
@@ -584,6 +592,7 @@ def run(
                 "coarse_contact_gap_m": CONTACT_GAP if coarse else None,
                 "coarse_budget_m": COARSE_BUDGET if coarse else None,
                 "claw": "parallel",
+                "self_contact": self_contact,
                 "geometry": geometry,
                 "mass_kg": mass,
                 "seated_frame": seat_frame,
@@ -642,6 +651,10 @@ def judge(out: Path, diagnostics, quality, geometry, sim, entity, steps, *, vide
     stretch = loop_stretch(sim, entity)
     result = {
         "geometry": geometry,
+        "self_contact": {
+            "enabled": bool(getattr(sim.pipeline.program.solver, "particle_enable_self_contact", False)),
+            "margin_m": float(getattr(sim.pipeline.program.solver, "particle_self_contact_margin", 0.0)),
+        },
         "weight_n": weight,
         "rod_load_n": rod_load,
         "rod_load_over_weight": rod_load / weight if weight else None,

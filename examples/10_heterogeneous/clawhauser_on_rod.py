@@ -269,9 +269,10 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
         "particle_self_contact_radius": 0.002,
         "particle_self_contact_margin": 0.002,
         "particle_topological_contact_filter_threshold": 2,
-        # The plush's own surface is within the contact margin at rest; exclude
-        # rest-shape pairs, or the toy tears itself apart on the first frame.
-        "particle_rest_shape_contact_exclusion_radius": 0.002,
+        # The plush's own surface is within the contact margin at rest, and the
+        # grasp squeezes the 11 mm loop by 6 mm; exclude pairs that are that
+        # close in the rest shape, or the pinch folds the loop into itself.
+        "particle_rest_shape_contact_exclusion_radius": 0.006,
         "particle_vertex_contact_buffer_size": 32,
         "particle_edge_contact_buffer_size": 64,
         "particle_enable_tile_solve": False,

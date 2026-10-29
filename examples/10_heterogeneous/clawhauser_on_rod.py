@@ -63,7 +63,7 @@ ASSET = Path(__file__).resolve().parent / "assets" / "clawhauser"
 OUTPUT = Path(__file__).resolve().parents[2] / "outputs" / "clawhauser_on_rod"
 CONTROL_HZ = 30
 SUBSTEPS = 20
-DURATION = 8.5
+DURATION = 9.5
 """Long enough for the guarded seat to stop early or late and still leave the last
 half second still, so that the window the hang is judged on is a quiet one.
 """
@@ -140,6 +140,11 @@ POST_Y = 0.160
 CLEARANCE = 0.030
 """Space the hanging toy keeps under its lowest point [m]; the gate asks 20 mm."""
 THREAD_LIFT = 0.005
+RIM_HANG = 0.030
+"""How far the loop's centre sits below the pads when the toy dangles from a rim
+pinch [m]. Measured on the first lying-start run: the pads reached the thread
+height and the loop was 23 mm low, so it met the rod's side instead of its hole.
+"""
 """How far the hole's centre rides above its seated height while threading.
 
 The thread has to happen with the rod *inside* the hole. Raising the toy until
@@ -184,10 +189,12 @@ PHASES = {
     # bench within half a second of the scene starting.
     "close": (0.0, 0.6),
     "lift": (0.6, 2.2),
-    "thread": (2.2, 3.4),
-    "seat": (3.4, 6.4),
-    "open": (7.0, 7.5),
-    "withdraw": (7.5, 8.0),
+    # The pad is still while the toy swings upright under the pinch -- the same
+    # beat the cup and pick-and-drop scenes take between lift and carry.
+    "thread": (3.0, 4.2),
+    "seat": (4.2, 7.2),
+    "open": (7.8, 8.3),
+    "withdraw": (8.3, 8.8),
 }
 """Planned phase windows. The seat's own end is not one of them: the descent
 stops when the rod reports support, and ``SEAT_FLOOR`` bounds it if it does not.
@@ -249,7 +256,7 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
         "seat_drop_m": seat_drop,
         "rod_z_m": rod_z,
         "rod_free_y_m": ROD_FREE_Y,
-        "lift_m": thread_height - grip_z,
+        "lift_m": thread_height - grip_z + RIM_HANG,
         # Threaded well inboard of the free end, not merely past it: a build that
         # left 21 mm of engagement had the loop walk along the rod and off the
         # tip during the seat -- 20 mm of it, measured -- and lose the rod.

@@ -246,12 +246,6 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
     # it, and the toy is carried over the bore without a lateral detour.
     pose = (SOURCE_X, float(-hole[1]), float(-vertices[:, 2].min()) + 0.001)
     grip_z = float(pose[2] + hole[2])
-    if not coarse:
-        # The stock solver meets the loop differently: a grip aimed at the modelled
-        # height closed above it (measured: 0.03 N of jaw effort, no contact). Start
-        # the pads at the bench instead, their bottom faces 2 mm over it, which
-        # straddles the loop wherever it settled.
-        grip_z = float(ParallelGripperSpec.pad_half_height + 0.002)
     # How far the toy hangs below the pinch once it is off the bench: the same
     # 198 mm the standing start measures, because the body hangs from the loop
     # either way. It is what the lift has to clear the rim by.

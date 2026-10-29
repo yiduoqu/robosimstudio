@@ -99,17 +99,7 @@ def build_scene(*, coarse: bool, self_contact: bool = True):
     hole = ring["hole_centre_local"]
     base = ring["base_local_y"]
     pose = (SOURCE_X, float(-hole[1]), float(-vertices[:, 2].min()) + 0.001)
-    modelled_grip = float(pose[2] + hole[2])
-    grip_z = modelled_grip
-    if not coarse:
-        # The stock solver meets the loop differently: a grip aimed at the modelled
-        # height closed above it (measured: 0.03 N of jaw effort, no contact). Start
-        # the pads at the bench instead, their bottom faces 2 mm over it, which
-        # straddles the loop wherever it settled. The lift grows by the same drop so
-        # the tail still clears the bench.
-        grip_z = float(ParallelGripperSpec.pad_half_height + 0.002)
-    grip = (SOURCE_X + float(hole[0]), 0.0, grip_z)
-    lift = LIFT_M + (modelled_grip - grip_z)
+    grip = (SOURCE_X + float(hole[0]), 0.0, float(pose[2] + hole[2]))
     hole_height = float(hole[1] - base)
     geometry = {
         "hole_centre_local": np.round(hole, 4).tolist(),
@@ -118,7 +108,7 @@ def build_scene(*, coarse: bool, self_contact: bool = True):
         "grip_squeeze_m": GRIP_SQUEEZE,
         "grip_z_m": grip[2],
         "hole_height_m": hole_height,
-        "lift_m": lift,
+        "lift_m": LIFT_M,
         "carry_m": TARGET_X - SOURCE_X,
         "force_cap_n": GRASP_LIMIT_N,
         "resting_pose": "lying flat, no rotation",
@@ -221,12 +211,12 @@ def build_scene(*, coarse: bool, self_contact: bool = True):
     return sim, obj, jaw, camera, geometry
 
 
-def waypoints(grip, capacity: int, dt: float, lift: float = LIFT_M) -> np.ndarray:
+def waypoints(grip, capacity: int, dt: float) -> np.ndarray:
     """The claw's own path: close, lift, hang, carry, open.
 
-    The pads close on the loop where it stands above the toy, the lift takes the
-    toy off the bench, the hang lets it swing to hang from the pinch, the carry
-    moves the claw, and the open is what lets it fall.
+    The pads close on the loop where it lies, the lift takes the toy off the bench,
+    the hang lets it swing to hang from the pinch, the carry moves the claw, and the
+    open is what lets it fall.
     """
     centre = np.asarray(grip.entity.center, dtype=np.float64)
     opened = float(grip.spec.half_gap)
@@ -241,7 +231,7 @@ def waypoints(grip, capacity: int, dt: float, lift: float = LIFT_M) -> np.ndarra
             [
                 (TARGET_X - SOURCE_X) * smooth(time, *PHASES["carry"]),
                 0.0,
-                lift * smooth(time, *PHASES["lift"]),
+                LIFT_M * smooth(time, *PHASES["lift"]),
             ]
         )
         poses[index, 0, :3] = place + np.array([-gap, 0.0, 0.0])
@@ -320,7 +310,7 @@ def run(
     quality = MeshQuality(sim, entity)
     dt = 1.0 / (CONTROL_HZ * SUBSTEPS)
     q0 = sim.pipeline.state_0.particle_q.numpy()[particles]
-    jaw.entity.set_trajectory(waypoints(jaw, jaw.entity.capacity, dt, geometry["lift_m"]))
+    jaw.entity.set_trajectory(waypoints(jaw, jaw.entity.capacity, dt))
     rest_det = np.linalg.det(q0[tets[:, 1:]] - q0[tets[:, :1]])
     if np.any(rest_det <= 0):
         raise RuntimeError("source tetrahedra were not positively oriented after build")

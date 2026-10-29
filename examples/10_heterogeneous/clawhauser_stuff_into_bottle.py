@@ -586,9 +586,9 @@ def press_path(positions: np.ndarray, dt: float, body_min_z: float) -> np.ndarra
     each side of the loop. The descent runs PRESS_DEPTH below the pose they first
     touched the body at, and is bounded by the room the body itself has left above
     the container's floor: a bound taken from the pads' own clearance drives them
-    through the plush after the toy has bottomed out (measured, h2: 85 mm of
-    travel, 8 mm of indentation below contact, 2.05 mm of wall penetration). The
-    push clamp bounds the contact.
+    through the plush after the toy has bottomed out, which measured 85 mm of
+    travel, 8 mm of indentation and 2.05 mm of wall penetration. The push clamp
+    bounds the contact.
     """
     positions = np.asarray(positions, dtype=np.float64)
     centre = 0.5 * (positions[0] + positions[1])
@@ -598,7 +598,7 @@ def press_path(positions: np.ndarray, dt: float, body_min_z: float) -> np.ndarra
     hold_end = press_s + PRESS_HOLD
     # Open before rising: under the press the pads are loaded into the plush, and
     # 5 N of jaw cannot slide out from under that normal on its own. Rising while
-    # opening dragged the toy back up with the pads (measured, h2: 26 mm).
+    # opening dragged the toy back up with the pads, by 26 mm.
     open_end = hold_end + JAM_OPEN
     rise_end = open_end + JAM_WITHDRAW
     count = int(np.ceil(rise_end / dt)) + 2

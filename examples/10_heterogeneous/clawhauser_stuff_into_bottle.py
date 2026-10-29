@@ -392,8 +392,8 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         name="overview",
         width=960,
         height=540,
-        eye=(0.74, -0.48, 1.09),
-        look_at=(0.60, 0.0, 0.90),
+        eye=(0.74, -0.48, 1.14),
+        look_at=(0.60, 0.0, 0.95),
         fov_y=45.0,
     )
     scene.add(camera)

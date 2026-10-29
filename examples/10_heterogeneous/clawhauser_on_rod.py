@@ -63,7 +63,7 @@ ASSET = Path(__file__).resolve().parent / "assets" / "clawhauser"
 OUTPUT = Path(__file__).resolve().parents[2] / "outputs" / "clawhauser_on_rod"
 CONTROL_HZ = 30
 SUBSTEPS = 20
-DURATION = 9.5
+DURATION = 8.5
 """Long enough for the guarded seat to stop early or late and still leave the last
 half second still, so that the window the hang is judged on is a quiet one.
 """
@@ -179,12 +179,15 @@ squeeze is a bounded 5 N, which is what that clamp is for.
 # the 9.3 N the pinch could hold at the 5 N clamp. A smoothstep reaching 100 mm/s
 # instead was measured to push the loop back out of the jaws (three runs).
 PHASES = {
-    "close": (0.6, 1.4),
-    "lift": (1.4, 3.0),
-    "thread": (3.0, 4.8),
-    "seat": (4.8, 7.8),
-    "open": (8.4, 8.9),
-    "withdraw": (8.9, 9.4),
+    # The same windows the other two scenes use, moved as early as the control loop
+    # allows: lying flat, the loop is a limp hoop and the toy slides across the
+    # bench within half a second of the scene starting.
+    "close": (0.0, 0.6),
+    "lift": (0.6, 2.2),
+    "thread": (2.2, 3.4),
+    "seat": (3.4, 6.4),
+    "open": (7.0, 7.5),
+    "withdraw": (7.5, 8.0),
 }
 """Planned phase windows. The seat's own end is not one of them: the descent
 stops when the rod reports support, and ``SEAT_FLOOR`` bounds it if it does not.
@@ -213,10 +216,10 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
         raise ValueError("Clawhauser source material estimates changed")
     ring = ring_geometry(vertices, tets, labels)
 
-    # Lying flat in its own rest pose, grasped on the loop's rim: the toy's lowest
-    # vertex rests it on the bench and the pads close on the rim from either side.
-    # The toy is laid so the hole's centre sits at bench origin in y; that origin is
-    # what the rod is aimed at, and the body lies behind it, clear of the rod's span.
+    # Lying flat in its own rest pose, grasped on the loop's rim: the same pose and
+    # grasp the other two scenes use. The toy's lowest vertex rests it on the bench,
+    # the loop lies flat at its end, and the toy is laid so the hole's centre sits on
+    # the bench origin in y -- that origin is what the rod is aimed at.
     quat = (0.0, 0.0, 0.0, 1.0)
     hole = ring["hole_centre_local"]
     base = ring["base_local_y"]
@@ -349,9 +352,8 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
         name="overview",
         width=960,
         height=540,
-        # Framed for the lying start: the toy rests toward the camera, so the eye
-        # is pulled back from the standing framing and the view is aimed between
-        # the toy's rest and the rod.
+        # Pulled back from the toy-and-rod framing so both ends of the scene stay
+        # in frame for the whole carry, as in the cup and pick-and-drop scenes.
         eye=(0.76, -0.55, 1.163),
         look_at=(0.46, 0.0, 0.95),
         fov_y=45.0,
@@ -678,7 +680,7 @@ def judge(out: Path, diagnostics, quality, geometry, sim, entity, steps, *, vide
         "rod_load_n": rod_load,
         "rod_load_over_weight": rod_load / weight if weight else None,
         # The weight check for the load metric: half a second after the 1 mm
-        # placement drop, with the toy at rest on the bench.
+        # placement drop, with the toy standing on the bench.
         "standing_load_n": float(
             np.mean([row["bench_support_n"] for row in diagnostics[CONTROL_HZ // 2 : CONTROL_HZ]])
         ),

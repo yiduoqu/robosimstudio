@@ -1,0 +1,24 @@
+{
+  "hanson_base_commit": "7476ea2777c8de80b58f89a92e583503e350979c",
+  "source_changes_relative_to_hanson_dev": false,
+  "fast_suite": {
+    "command": "python scripts/testrun.py --tier fast",
+    "status": "passed",
+    "tests_run": 2420,
+    "skipped": 26,
+    "elapsed_seconds": 166.945,
+    "compute_job": 4617843
+  },
+  "ruff_lint": "passed",
+  "ruff_format": {
+    "status": "failed_preexisting_hanson_files",
+    "files": [
+      "examples/10_heterogeneous/clawhauser_pick_drop.py",
+      "examples/10_heterogeneous/clawhauser_stuff_into_bottle.py",
+      "examples/10_heterogeneous/parallel_gripper.py",
+      "tests/test_coarse_translation.py"
+    ]
+  },
+  "physics_scenes_rerun_for_pr": false,
+  "dependency_note": "Checks reused the existing Newton environment. pyproject.toml and uv.lock retain the Hanson editable ../newton dependency; a fresh CI checkout needs that sibling source."
+}

@@ -1,0 +1,15 @@
+{
+  "max_particle_difference_from_H1_m": 0.0,
+  "max_body_difference_from_H1_m": 0.0,
+  "all_saved_states_finite": true,
+  "source_matches_snapshot": {
+    "gripper.py": true,
+    "clawhauser_pick_place.py": true
+  },
+  "source_sha256": {
+    "gripper.py": "a0c57ea3a164deec2348024e8fbee760044da94bc6dcbee8d47f39f6f276dae0",
+    "clawhauser_pick_place.py": "ed30c1e2cbd49f7bcc156e3793f97610ff246d32c6dc6e584792c2405e418c23"
+  },
+  "frames": 360,
+  "video_full_decode_pass": true
+}

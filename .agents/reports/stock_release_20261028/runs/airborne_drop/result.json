@@ -1,0 +1,38 @@
+{
+  "task": "pickup_transport_airborne_release",
+  "transit_body_lift_m": 0.28331315517425537,
+  "transit_clearance_m": 0.22814196348190308,
+  "bilateral_ring_grasp": true,
+  "released": true,
+  "first_finger_free_s": 8.566666666666666,
+  "table_contact_before_release": false,
+  "table_supported": true,
+  "final_half_second_body_drift_m": 9.644015407814025e-05,
+  "target_error_xy_m": 0.0922439065789298,
+  "contact_free_flight_samples": 6,
+  "contact_free_flight_window_s": [
+    8.566666666666666,
+    8.733333333333333
+  ],
+  "contact_free_com_fall_m": 0.17900339019892664,
+  "mean_contact_free_com_acceleration_m_s2": [
+    -0.4211996604114295,
+    -0.09458721724415475,
+    -10.128522367959341
+  ],
+  "model_gravity_m_s2": [
+    -0.0,
+    -0.0,
+    -9.8100004196167
+  ],
+  "gravity_relative_error": 0.05468717868752713,
+  "first_table_contact_after_transport_s": 8.766666666666667,
+  "max_pre_impact_inverted_tetrahedra": 0,
+  "max_pre_release_inverted_tetrahedra": 0,
+  "max_inverted_tetrahedra": 3,
+  "minimum_tet_volume_ratio": -0.2612675130367279,
+  "airborne_release_success": true,
+  "lowered_release_success": false,
+  "all_episode_mesh_integrity_pass": false,
+  "success": false
+}

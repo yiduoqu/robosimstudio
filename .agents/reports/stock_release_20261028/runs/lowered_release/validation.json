@@ -1,0 +1,28 @@
+{
+  "max_particle_difference_from_H3_m": 0.0,
+  "max_body_difference_from_H3_m": 0.0,
+  "all_saved_states_finite": true,
+  "source_matches_snapshot": {
+    "gripper.py": true,
+    "clawhauser_pick_place.py": true
+  },
+  "source_sha256": {
+    "gripper.py": "a0c57ea3a164deec2348024e8fbee760044da94bc6dcbee8d47f39f6f276dae0",
+    "clawhauser_pick_place.py": "ed30c1e2cbd49f7bcc156e3793f97610ff246d32c6dc6e584792c2405e418c23"
+  },
+  "frames": 420,
+  "max_finger_contacts_after_release": 0,
+  "bad_frame_times_s": [
+    10.933333333333334,
+    10.966666666666667,
+    11.033333333333333,
+    11.1
+  ],
+  "max_inverted_before_release": 0,
+  "max_inverted_at_final_frame": 0,
+  "final_COM_speed_m_s": 0.00026393357315042566,
+  "video_error": null,
+  "video_sample_counts": [
+    420
+  ]
+}

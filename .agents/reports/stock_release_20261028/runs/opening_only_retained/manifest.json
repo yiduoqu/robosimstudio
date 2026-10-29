@@ -1,0 +1,30 @@
+{
+  "asset": "clawhauser",
+  "task": "pickup_transport_airborne_release",
+  "actuation": "kinematic, uncapped, contact only",
+  "newton_version": "1.8.0.dev0",
+  "newton_source_commit": "d960ec3b8be23d7acac01c0ba10b8d04dca8b549",
+  "solver": "SolverVBD",
+  "tetrahedra": 6850,
+  "part_tet_counts": {
+    "0": 2335,
+    "1": 2713,
+    "2": 1802
+  },
+  "source_young_pa": [
+    500000.0,
+    5000000.0
+  ],
+  "source_poisson": [
+    0.45,
+    0.49
+  ],
+  "source_density_kg_m3": [
+    300.0,
+    1100.0
+  ],
+  "global_soft_contact_mu": 0.9,
+  "grasp_attachments": 0,
+  "completed_steps": 300,
+  "video_error": null
+}

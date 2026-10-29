@@ -5,7 +5,8 @@ a faceted glass cylinder, tail first.
 The toy starts lying flat, in the pose it rests in, and the claw takes the ring
 where it lies: the ring is a hoop on a stem, so on the bench its plane is
 horizontal at the body's mid-thickness and the pads close on its rim from either
-side. Lifting pulls it upright and it hangs as it does from any pinch.
+side. Lifting pulls it upright, and the carry is built from the toy measured
+where it hangs, because a rim pinch does not hang it on the pads' axis.
 
 The cylinder's bore is deliberately too small for the toy: at the default 90 mm
 inner diameter the tail (47 by 36 mm) enters and the body (110 by 72 mm) does
@@ -198,18 +199,17 @@ PHASES = {
     "close": (0.0, 0.6),
     "lift": (0.6, 4.6),
     "hang": (4.6, 5.6),
-    "carry": (5.6, 7.6),
-    "lower": (7.6, 8.1),
-    "descend": (8.1, 10.6),
-    "open": (11.2, 11.7),
-    "withdraw": (11.7, 12.2),
 }
-"""Planned phase windows. ``hang`` is a phase with no motion: the toy is lifted
-off the bench and has to settle into hanging from the pinch before it is carried
-anywhere. The lift is slow on purpose -- 270 mm out of a lying start at the
-68 mm/s the standing start used. The descend's own end is not a boundary, only
-the ramp's bound; the stop is the jam guard, and the open and withdraw windows
-are the fallback's, for a run whose guard never fires.
+"""The authored part of the path: close, lift, and a hang with no motion, where
+the toy comes off the bench and settles into hanging from the pinch. Everything
+after it is measured from where it actually hangs (``carry_path``).
+"""
+CARRY_TIME = 2.0
+LOWER_TIME = 0.5
+DESCENT_TIME = 2.5
+"""After the hang: slide the hanging toy over the bore, lower it to the approach
+height, then descend [s]. The descent's end is not a boundary, only the ramp's
+bound; what ends it in every working run is the jam guard.
 """
 SOURCE_HASHES = {
     "final_mesh.mesh": "df3d1505d96d36fbfa76291e7ab94269a30500ba5e4b87516d0bf8f57f0c6458",
@@ -279,7 +279,6 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         "rim_z_m": RIM_Z,
         "floor_z_m": FLOOR_Z,
         "lift_m": RIM_Z + LIFT_CLEARANCE + hole_height - grip_z,
-        "carry_m": TARGET_X - SOURCE_X - float(tail_centre[0]),
         "tail_centre_local": np.round(tail_centre, 4).tolist(),
         "tail_extent_m": np.round(np.ptp(tail_vertices, axis=0), 4).tolist(),
         "lower_m": APPROACH - LIFT_CLEARANCE,
@@ -453,43 +452,62 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
 
 
 def waypoints(grip, capacity: int, dt: float, geometry: dict) -> np.ndarray:
-    """The claw's own path: close, lift, hang, carry, lower, descend.
+    """The claw's own path to the hang: close, lift, and hold.
 
-    The descent runs to the container's floor and is bounded there, not scheduled:
-    a run whose guard never fires must not drive the jaws through the bench. What
-    ends it in every working run is the jam guard, and ``after_jam`` is the path
-    that follows.
+    Where the toy hangs is not authored. The pinch holds the ring at its rim, so
+    the body hangs off the pads' axis by however the compliant hoop folds, and
+    the carry is built from the toy measured at the end of the hang.
     """
     centre = np.asarray(grip.entity.center, dtype=np.float64)
     opened = float(grip.spec.half_gap)
     closed = float(grip.spec.closed_half_gap)
     lift = geometry["lift_m"]
-    carry = geometry["carry_m"]
-    lower = geometry["lower_m"]
-    descend = geometry["descend_m"]
     poses = np.zeros((capacity, 2, 7), dtype=np.float32)
     poses[:, :, 6] = 1.0
     for index in range(capacity):
         time = index * dt
         gap = opened + (closed - opened) * smooth(time, *PHASES["close"])
-        gap += (OPENED_HALF_GAP - gap) * smooth(time, *PHASES["open"])
-        away = smooth(time, *PHASES["withdraw"])
-        place = centre + np.array(
+        place = centre + np.array([0.0, 0.0, lift * smooth(time, *PHASES["lift"])])
+        poses[index, 0, :3] = place + np.array([-gap, 0.0, 0.0])
+        poses[index, 1, :3] = place + np.array([gap, 0.0, 0.0])
+    return poses
+
+
+def carry_path(positions, target, dt: float, capacity: int, geometry: dict, closed: float):
+    """From the hang: carry the toy over the bore, lower it, and descend.
+
+    ``target`` is the pads' xy that puts the toy's own tail on the container's
+    axis, measured from the hanging toy: the authored carry was the standing
+    start's tail offset, and the rim pinch hangs the body tens of millimetres off
+    the pads, which put the tail beside the bore instead of over it. The descent
+    runs to the container's floor and is bounded there, not scheduled.
+
+    Returns the poses and the time the descent ramp starts, when the jam guard
+    arms.
+    """
+    centre = 0.5 * (np.asarray(positions, dtype=np.float64)[0] + positions[1])
+    lower_at = CARRY_TIME
+    descend_at = lower_at + LOWER_TIME
+    open_at = descend_at + DESCENT_TIME + 0.6
+    withdraw_at = open_at + 0.5
+    poses = np.zeros((capacity, 2, 7), dtype=np.float32)
+    poses[:, :, 6] = 1.0
+    for index in range(capacity):
+        time = index * dt
+        gap = closed + (OPENED_HALF_GAP - closed) * smooth(time, open_at, open_at + 0.5)
+        place = np.array(
             [
-                carry * smooth(time, *PHASES["carry"]),
-                0.0,
-                lift * smooth(time, *PHASES["lift"])
-                + lower * smooth(time, *PHASES["lower"])
-                # max(0, ...) is what keeps this zero before the descent's window
-                # opens: a ramp read at a negative time is a *rise*, and this one
-                # held the jaws 210 mm over the toy's head for the whole run.
-                + max(-DESCEND_RATE * max(0.0, time - PHASES["descend"][0]), descend)
-                + WITHDRAW_Z * away,
+                centre[0] + (float(target[0]) - centre[0]) * smooth(time, 0.0, CARRY_TIME),
+                centre[1] + (float(target[1]) - centre[1]) * smooth(time, 0.0, CARRY_TIME),
+                centre[2]
+                + geometry["lower_m"] * smooth(time, lower_at, descend_at)
+                + max(-DESCEND_RATE * max(0.0, time - descend_at), geometry["descend_m"])
+                + WITHDRAW_Z * smooth(time, withdraw_at, withdraw_at + 0.5),
             ]
         )
         poses[index, 0, :3] = place + np.array([-gap, 0.0, 0.0])
         poses[index, 1, :3] = place + np.array([gap, 0.0, 0.0])
-    return poses
+    return poses, descend_at
 
 
 def body_top_centre(owned: np.ndarray, ring: dict, band: float = 0.020) -> np.ndarray:
@@ -665,6 +683,7 @@ def run(
     print(json.dumps({"mass_kg": mass, "weight_n": weight, "rim_z_m": rim}), flush=True)
 
     diagnostics = []
+    descend_frame = round(PHASES["hang"][1] * CONTROL_HZ)
     jam_frame = None
     chase_frame = None
     press_frame = None
@@ -784,6 +803,29 @@ def run(
                 "applied_carrier": grip.entity.applied_carrier.numpy().tolist(),
             }
             diagnostics.append(row)
+            if frame + 1 == round(PHASES["hang"][1] * CONTROL_HZ):
+                # The toy is hanging: carry the pads to where the toy's own tail
+                # is over the bore's axis, not where the standing start's tail
+                # offset would put it.
+                fingers = np.array([[body_q[b][0], body_q[b][1], body_q[b][2]] for b in grip.entity.bodies])
+                pads = 0.5 * (fingers[0] + fingers[1])[:2]
+                tail = owned[part_of_particle == 0][:, :2].mean(axis=0)
+                target = np.array((BENCH_X + TARGET_X, 0.0)) + (pads - tail)
+                paths, descend = carry_path(
+                    fingers, target, dt, grip.entity.capacity, geometry, grip.spec.closed_half_gap
+                )
+                grip.entity.set_trajectory(paths)
+                descend_frame = frame + 1 + round(descend * CONTROL_HZ)
+                print(
+                    json.dumps(
+                        {
+                            "carry_frame": frame + 1,
+                            "tail_from_pads_mm": (1000.0 * (tail - pads)).tolist(),
+                            "carry_mm": (1000.0 * (target - pads)).tolist(),
+                        }
+                    ),
+                    flush=True,
+                )
             if row["insertion_depth_m"] > depth_best + JAM_STEP:
                 depth_best = row["insertion_depth_m"]
                 progress_frame = frame
@@ -799,7 +841,7 @@ def run(
                 progress_frame = frame
             # Armed once the toy's own lowest point is under the rim: before that
             # the depth is the claw's descent and cannot stall.
-            armed = depth_best > 0.0 and frame >= round(PHASES["descend"][0] * CONTROL_HZ)
+            armed = depth_best > 0.0 and frame >= descend_frame
             jam_streak = jam_streak + 1 if armed and frame - progress_frame >= JAM_FRAMES else 0
             if jam_frame is None and jam_streak > 0:
                 jam_frame = frame + 1

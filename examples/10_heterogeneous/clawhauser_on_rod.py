@@ -213,16 +213,15 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
         raise ValueError("Clawhauser source material estimates changed")
     ring = ring_geometry(vertices, tets, labels)
 
-    # Standing pose: a quarter turn about x puts the mesh's +y (the loop) up and
-    # its +z (the hole's axis) along the world y the rod runs down. Under that
-    # rotation a vertex's world z is its local y, so the toy's own extents give
-    # the rod's height directly.
-    quat = (float(np.sin(np.pi / 4.0)), 0.0, 0.0, float(np.cos(np.pi / 4.0)))
+    # Lying flat in its own rest pose, grasped on the loop's rim: the toy's lowest
+    # vertex rests it on the bench and the pads close on the rim from either side.
+    # The toy is laid so the hole's centre sits at bench origin in y; that origin is
+    # what the rod is aimed at, and the body lies behind it, clear of the rod's span.
+    quat = (0.0, 0.0, 0.0, 1.0)
     hole = ring["hole_centre_local"]
     base = ring["base_local_y"]
-    # The toy is placed so the hole's centre sits at bench origin in y and its
-    # base 1 mm over the bench top; that origin is what the rod is aimed at.
-    pose = (SOURCE_X, float(hole[2]), -base + 0.001)
+    pose = (SOURCE_X, float(-hole[1]), float(-vertices[:, 2].min()) + 0.001)
+    grip_z = float(pose[2] + hole[2])
     hole_height = float(hole[1] - base)
     seat_drop = ring["hole_inradius"] - rod_radius
     rod_z = seat_drop + hole_height + CLEARANCE
@@ -231,7 +230,7 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
     # the pads make is their difference and nothing else.
     seat_height = rod_z - seat_drop
     thread_height = seat_height + THREAD_LIFT
-    ring_plane_y = float(hole[2])
+    ring_plane_y = 0.0
     geometry = {
         "hole_centre_local": np.round(hole, 4).tolist(),
         "hole_inradius_m": ring["hole_inradius"],
@@ -243,11 +242,11 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
         "hole_height_m": hole_height,
         # The gripper's centre is the hole's centre, so the grasp height and the
         # seated height are both stated about that one point.
-        "grip_z_m": hole_height + 0.001,
+        "grip_z_m": grip_z,
         "seat_drop_m": seat_drop,
         "rod_z_m": rod_z,
         "rod_free_y_m": ROD_FREE_Y,
-        "lift_m": thread_height - (hole_height + 0.001),
+        "lift_m": thread_height - grip_z,
         # Threaded well inboard of the free end, not merely past it: a build that
         # left 21 mm of engagement had the loop walk along the rod and off the
         # tip during the seat -- 20 mm of it, measured -- and lose the rod.
@@ -336,7 +335,7 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
             # past it that the jaw drive clamps at 5 N. The pose is in the
             # work-surface frame, like the statics above and every other entity's
             # -- an absolute height here would be lifted by the frame twice.
-            center=(SOURCE_X + float(hole[0]), 0.0, geometry["grip_z_m"]),
+            center=(SOURCE_X + float(hole[0]), 0.0, grip_z),
             half_gap=ring["side_reach"] + PAD_HALF_THICKNESS + 0.012,
             closed_half_gap=ring["side_reach"] + PAD_HALF_THICKNESS - GRIP_SQUEEZE,
             pad_half_thickness=PAD_HALF_THICKNESS,
@@ -350,8 +349,11 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
         name="overview",
         width=960,
         height=540,
-        eye=(0.70, -0.44, 1.12),
-        look_at=(0.46, 0.06, 0.96),
+        # Framed for the lying start: the toy rests toward the camera, so the eye
+        # is pulled back from the standing framing and the view is aimed between
+        # the toy's rest and the rod.
+        eye=(0.76, -0.55, 1.163),
+        look_at=(0.46, 0.0, 0.95),
         fov_y=45.0,
     )
     scene.add(camera)
@@ -676,7 +678,7 @@ def judge(out: Path, diagnostics, quality, geometry, sim, entity, steps, *, vide
         "rod_load_n": rod_load,
         "rod_load_over_weight": rod_load / weight if weight else None,
         # The weight check for the load metric: half a second after the 1 mm
-        # placement drop, with the toy standing on the bench.
+        # placement drop, with the toy at rest on the bench.
         "standing_load_n": float(
             np.mean([row["bench_support_n"] for row in diagnostics[CONTROL_HZ // 2 : CONTROL_HZ]])
         ),

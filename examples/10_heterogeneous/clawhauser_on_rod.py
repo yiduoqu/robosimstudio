@@ -140,10 +140,9 @@ POST_Y = 0.160
 CLEARANCE = 0.030
 """Space the hanging toy keeps under its lowest point [m]; the gate asks 20 mm."""
 THREAD_LIFT = 0.005
-RIM_HANG = 0.030
+RIM_HANG = 0.020
 """How far the loop's centre sits below the pads when the toy dangles from a rim
-pinch [m]. Measured on the first lying-start run: the pads reached the thread
-height and the loop was 23 mm low, so it met the rod's side instead of its hole.
+pinch [m], so the thread height is measured from the hole and not the pads.
 """
 """How far the hole's centre rides above its seated height while threading.
 

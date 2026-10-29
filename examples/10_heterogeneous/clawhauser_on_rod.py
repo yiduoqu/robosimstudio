@@ -20,7 +20,7 @@ drive's own clamp rather than whatever closing gap the loop's compliance leaves.
 Two things this scene is built to show. The rod and its post are rigid and never
 move, so nothing is scripted once the claw opens. And every jaw number is
 bounded: the two padded fingers slide on a level carrier under a 5 N jaw budget,
-and the carrier's 50 N push budget is separate. ``peak_force_n`` is the jaw peak;
+and the carrier's 200 N push budget is separate. ``peak_force_n`` is the jaw peak;
 ``peak_torque_nm`` is zero because a prismatic jaw cannot rotate.
 
 Geometry is derived from the mesh rather than hard-coded: the loop's hole centre
@@ -54,7 +54,7 @@ import newton
 import numpy as np
 from loop_geometry import ring_geometry, smooth
 from mesh_quality import MeshQuality, penetration
-from parallel_gripper import ParallelGripperSpec
+from parallel_gripper import GRASP_LIMIT_N, ParallelGripperSpec
 
 import robosimstudio as rss
 from robosimstudio_materials.heterogeneous import HeterogeneousSoftSpec, load_labelled_tets
@@ -176,7 +176,7 @@ squeeze is a bounded 5 N, which is what that clamp is for.
 # The seat is the slow one on purpose. Its descent is what brings the loop's
 # hole down onto the rod, and the catch is an impact: the guided ramp runs at a
 # constant 25 mm/s, whose momentum over one substep is about 1.9 N -- well under
-# the 9.3 N the pinch can hold at its 5 N clamp. A smoothstep reaching 100 mm/s
+# the 9.3 N the pinch could hold at the 5 N clamp. A smoothstep reaching 100 mm/s
 # instead was measured to push the loop back out of the jaws (three runs).
 PHASES = {
     "close": (0.6, 1.4),
@@ -711,7 +711,7 @@ def judge(out: Path, diagnostics, quality, geometry, sim, entity, steps, *, vide
         and result["quality"]["nonfinite_tet_substeps_by_part"] == [0, 0, 0]
         and min(result["quality"]["minimum_J_by_part"]) > 0.0
         and result["max_penetration_m"] <= 0.0005
-        and peak_force <= 5.0
+        and peak_force <= GRASP_LIMIT_N * (1.0 + 1.0e-6)
         and peak_torque <= 0.03
     )
     (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")

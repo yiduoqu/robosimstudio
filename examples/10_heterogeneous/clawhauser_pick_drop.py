@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 from loop_geometry import ring_geometry, smooth
 from mesh_quality import MeshQuality, penetration
-from parallel_gripper import ParallelGripperSpec
+from parallel_gripper import GRASP_LIMIT_N, ParallelGripperSpec
 
 import robosimstudio as rss
 from robosimstudio_materials.heterogeneous import HeterogeneousSoftSpec, load_labelled_tets
@@ -107,7 +107,7 @@ def build_scene(*, coarse: bool):
         "grip_z_m": grip[2],
         "lift_m": LIFT_M,
         "carry_m": TARGET_X - SOURCE_X,
-        "force_cap_n": 5.0,
+        "force_cap_n": GRASP_LIMIT_N,
         "resting_pose": "180 deg about x, loop up",
     }
     print(json.dumps({"geometry": geometry}), flush=True)
@@ -169,8 +169,6 @@ def build_scene(*, coarse: bool):
             closed_half_gap=ring["side_reach"] + PAD_HALF_THICKNESS - GRIP_SQUEEZE,
             pad_half_thickness=PAD_HALF_THICKNESS,
             pad_half_width=PAD_HALF_WIDTH,
-            force_limit=5.0,
-            push_force_limit=50.0,
             duration=DURATION,
             control_hz=CONTROL_HZ,
             substeps=SUBSTEPS,

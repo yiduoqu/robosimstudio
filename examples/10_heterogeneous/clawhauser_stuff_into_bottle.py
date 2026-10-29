@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Lower the labelled Clawhauser volume into a faceted glass cylinder, tail first.
+"""Lift the labelled Clawhauser volume off the bench by its ring and lower it into
+a faceted glass cylinder, tail first.
+
+The toy starts lying flat, in the pose it rests in, and the claw takes the ring
+where it lies: the ring is a hoop on a stem, so on the bench its plane is
+horizontal at the body's mid-thickness and the pads close on its rim from either
+side. Lifting pulls it upright and it hangs as it does from any pinch.
 
 The cylinder's bore is deliberately too small for the toy: at the default 90 mm
 inner diameter the tail (47 by 36 mm) enters and the body (110 by 72 mm) does
@@ -53,7 +59,7 @@ import newton
 import numpy as np
 from loop_geometry import ring_geometry, smooth
 from mesh_quality import MeshQuality, penetration
-from parallel_gripper import ParallelGripperSpec
+from parallel_gripper import GRASP_LIMIT_N, PUSH_LIMIT_N, ParallelGripperSpec
 
 import robosimstudio as rss
 from robosimstudio_materials.heterogeneous import HeterogeneousSoftSpec, load_labelled_tets
@@ -63,9 +69,9 @@ OUTPUT = Path(__file__).resolve().parents[2] / "outputs" / "clawhauser_stuff_int
 CONTROL_HZ = 30
 SUBSTEPS = 20
 DURATION = 24.0
-"""Long enough for the guarded descent to stall, for the release and the press
-that follows the body to the container's floor, and for the open and withdraw to
-finish inside the run.
+"""Long enough for the grasp, the guarded descent that stalls on the rim, the
+release, and the press that follows the body to the container's floor, and for
+the open and withdraw to finish inside the run.
 """
 BORE_RADIUS = 0.050
 """Inner radius of the container: 100 mm across by default. The body is 110 mm
@@ -186,20 +192,24 @@ WITHDRAW_Z = 0.060
 rim, so the withdrawal cannot drag the toy out of the container it just entered.
 """
 PHASES = {
-    "close": (0.6, 1.4),
-    "lift": (1.4, 3.0),
-    "hang": (3.0, 4.0),
-    "carry": (4.0, 6.0),
-    "lower": (6.0, 6.5),
-    "descend": (6.5, 9.0),
-    "open": (9.5, 10.0),
-    "withdraw": (10.0, 10.5),
+    # Closed as early as the control loop allows: the ring is a soft hoop on a
+    # stem with nothing under it, and it sags and rolls out of the jaws' reach
+    # within half a second of the scene starting.
+    "close": (0.0, 0.6),
+    "lift": (0.6, 4.6),
+    "hang": (4.6, 5.6),
+    "carry": (5.6, 7.6),
+    "lower": (7.6, 8.1),
+    "descend": (8.1, 10.6),
+    "open": (11.2, 11.7),
+    "withdraw": (11.7, 12.2),
 }
 """Planned phase windows. ``hang`` is a phase with no motion: the toy is lifted
-out of its standing pose and has to settle into hanging from the pinch before it
-is carried anywhere. The descend's own end is not a boundary, only the ramp's
-bound; the stop is the jam guard, and the open and withdraw windows are the
-fallback's, for a run whose guard never fires.
+off the bench and has to settle into hanging from the pinch before it is carried
+anywhere. The lift is slow on purpose -- 270 mm out of a lying start at the
+68 mm/s the standing start used. The descend's own end is not a boundary, only
+the ramp's bound; the stop is the jam guard, and the open and withdraw windows
+are the fallback's, for a run whose guard never fires.
 """
 SOURCE_HASHES = {
     "final_mesh.mesh": "df3d1505d96d36fbfa76291e7ab94269a30500ba5e4b87516d0bf8f57f0c6458",
@@ -224,14 +234,21 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
     ring = ring_geometry(vertices, tets, labels)
     ring["body_ids"] = np.unique(tets[labels == 1])
 
-    # Standing pose, tail down: the same quarter turn about x the rod scene uses,
-    # which puts the mesh's +y (the loop) up and its +z (the hole's axis) along
-    # world y. Under that rotation a vertex's world z is its local y, so the
-    # toy's own lowest local y is what stands it on the bench.
-    quat = (float(np.sin(np.pi / 4.0)), 0.0, 0.0, float(np.cos(np.pi / 4.0)))
+    # Lying flat, in its own rest pose: no rotation, so the mesh's +z is up and
+    # the body's lowest vertex is what rests it on the bench. The loop is a ring
+    # on a stem at the head's end, so lying down it floats at the body's
+    # mid-thickness, beyond the head, with its plane horizontal -- the pads close
+    # on its rim from either side at ``grip_z``.
+    quat = (0.0, 0.0, 0.0, 1.0)
     hole = ring["hole_centre_local"]
     base = ring["base_local_y"]
-    pose = (SOURCE_X, 0.0, -base + 0.001)
+    # Laid down so the ring's hole sits on the claw's own y: the body lies behind
+    # it, and the toy is carried over the bore without a lateral detour.
+    pose = (SOURCE_X, float(-hole[1]), float(-vertices[:, 2].min()) + 0.001)
+    grip_z = float(pose[2] + hole[2])
+    # How far the toy hangs below the pinch once it is off the bench: the same
+    # 198 mm the standing start measures, because the body hangs from the loop
+    # either way. It is what the lift has to clear the rim by.
     hole_height = float(hole[1] - base)
     # The tail is what goes in first, so it is the tail's own centre that gets
     # carried over the container's axis. Centring the hole instead leaves the
@@ -251,7 +268,7 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         "hole_height_m": hole_height,
         # Where the jaws close and how wide the thing they close on is: the loop's
         # own centre and its outer reach, as in Scene A. See the gripper's note.
-        "grip_z_m": hole_height + 0.001,
+        "grip_z_m": grip_z,
         "grip_reach_m": ring["side_reach"],
         "pad_half_width_m": PAD_HALF_WIDTH,
         # The ledges gripper.py builds under each pad (2.4 mm tall, 3 mm inboard
@@ -261,7 +278,7 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         "bore_radius_m": bore,
         "rim_z_m": RIM_Z,
         "floor_z_m": FLOOR_Z,
-        "lift_m": RIM_Z + LIFT_CLEARANCE - 0.001,
+        "lift_m": RIM_Z + LIFT_CLEARANCE + hole_height - grip_z,
         "carry_m": TARGET_X - SOURCE_X - float(tail_centre[0]),
         "tail_centre_local": np.round(tail_centre, 4).tolist(),
         "tail_extent_m": np.round(np.ptp(tail_vertices, axis=0), 4).tolist(),
@@ -376,7 +393,7 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
             # grip. After the stall the body is pressed by the carrier, whose
             # push budget is separate from the jaws' 5 N closing clamp.
             name="bottle_loop_gripper",
-            center=(SOURCE_X + float(hole[0]), 0.0, geometry["grip_z_m"]),
+            center=(SOURCE_X + float(hole[0]), 0.0, grip_z),
             half_gap=ring["side_reach"] + PAD_HALF_THICKNESS + 0.012,
             closed_half_gap=ring["side_reach"] + PAD_HALF_THICKNESS - GRIP_SQUEEZE,
             pad_half_thickness=PAD_HALF_THICKNESS,
@@ -436,7 +453,7 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
 
 
 def waypoints(grip, capacity: int, dt: float, geometry: dict) -> np.ndarray:
-    """The claw's own path: settle, close, lift, hang, carry, lower, descend.
+    """The claw's own path: close, lift, hang, carry, lower, descend.
 
     The descent runs to the container's floor and is bounded there, not scheduled:
     a run whose guard never fires must not drive the jaws through the bench. What
@@ -590,8 +607,8 @@ def run(
     render_every: int = 0,
     coarse: bool = True,
     bore: float = BORE_RADIUS,
-    cap: float = 5.0,
-    push_cap: float = 200.0,
+    cap: float = GRASP_LIMIT_N,
+    push_cap: float = PUSH_LIMIT_N,
     mu: float | None = None,
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
@@ -1078,8 +1095,8 @@ def main() -> None:
     parser.add_argument("--render-every", type=int, default=0)
     parser.add_argument("--no-coarse", dest="coarse", action="store_false")
     parser.add_argument("--bore", type=float, default=BORE_RADIUS, help="container inner radius [m]")
-    parser.add_argument("--cap", type=float, default=5.0, help="closing force clamp [N]")
-    parser.add_argument("--push-cap", type=float, default=200.0, help="pressing force clamp [N]")
+    parser.add_argument("--cap", type=float, default=GRASP_LIMIT_N, help="jaw closing clamp [N]")
+    parser.add_argument("--push-cap", type=float, default=PUSH_LIMIT_N, help="carrier push clamp [N]")
     parser.add_argument("--mu", type=float, default=None, help="global soft-contact friction coefficient")
     args = parser.parse_args()
     run(

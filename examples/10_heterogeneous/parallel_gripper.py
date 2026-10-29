@@ -217,6 +217,14 @@ def _advance_tick(tick: wp.array[int], lengths: wp.array[int]):
     tick[0] = wp.min(tick[0] + 1, lengths[0] - 1)
 
 
+GRASP_LIMIT_N = 5.0
+"""The jaws' closing budget: the slides never press the loop harder [N]."""
+PUSH_LIMIT_N = 200.0
+"""The carrier's push budget while pressing the toy [N]. Independent of the
+jaws: a claw that can only pinch at 5 N can still push at 200 N, and neither
+clamp appears in the other's drive."""
+
+
 @dataclass(frozen=True, kw_only=True)
 class ParallelGripperSpec:
     entity: str = "parallel_loop_gripper"
@@ -227,10 +235,11 @@ class ParallelGripperSpec:
     closed_half_gap: float = 0.005
     minimum_half_gap: float = 0.0032
     maximum_half_gap: float = 0.060
-    force_limit: float = 5.0
+    force_limit: float = GRASP_LIMIT_N
     """The jaws' closing budget. The slide drive never exceeds it [N]."""
-    push_force_limit: float = 50.0
-    """The carrier's push budget. The body may push harder than the jaws close [N]."""
+    push_force_limit: float = PUSH_LIMIT_N
+    """The carrier's push budget. Its own drive clamps here, so the jaws' clamp
+    does not bound the press [N]."""
     jaw_ke: float = 1500.0
     jaw_kd: float = 15.0
     carrier_ke: float = 1500.0

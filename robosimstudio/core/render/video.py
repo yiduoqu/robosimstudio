@@ -325,6 +325,8 @@ class VideoSet:
     Args:
         root: Directory the files are written under.
         fps: Frame rate.
+        holds: How many frames each appended one fills, so a 30 Hz run can be
+            written at 60 fps at the right speed.
         suffix: Appended to each camera name, so one run can hold both
             ``wrist.mp4`` and ``wrist_depth.mp4``.
         preset: libx264's speed preset for every writer; see :class:`VideoWriter`.
@@ -337,6 +339,7 @@ class VideoSet:
         root: str | Path,
         *,
         fps: int = 30,
+        holds: int = 1,
         suffix: str = "",
         preset: str = "medium",
         threads: int = 0,
@@ -344,6 +347,7 @@ class VideoSet:
     ) -> None:
         self.root = Path(root)
         self.fps = int(fps)
+        self.holds = max(1, int(holds))
         self.suffix = suffix
         self.preset = str(preset)
         self.threads = int(threads)
@@ -361,7 +365,8 @@ class VideoSet:
                 copy=self.copy,
             )
             self.writers[name] = writer
-        writer.append(frame)
+        for _ in range(self.holds):
+            writer.append(frame)
 
     def append_frames(self, frames: Mapping[str, Mapping[str, np.ndarray]], *, depth: bool = False) -> None:
         """Append the ``rgb`` channel of every camera in a render result.

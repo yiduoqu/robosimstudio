@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Pick the labelled Clawhauser volume up by its loop, carry it, and drop it.
 
-The toy starts where it comes to rest on the bench -- on its back, loop up --
-and the parallel claw closes on the loop's sides, lifts it clear, carries it
-80 mm, opens and lets it fall. The run measures whether the grip held, how far
+The toy starts lying on its lowest face, loop flat, and the parallel claw closes
+on the loop's rim, lifts it clear, carries it 80 mm, opens and lets it fall. The run measures whether the grip held, how far
 the toy moved, whether it came to rest on the bench, and what the mesh did.
 
 The claw is the same mechanism as the two longer scenes: a level carrier on a
@@ -50,8 +49,8 @@ CONTACT_KE = 100000.0
 COARSE_BUDGET = 0.005
 GRIP_SQUEEZE = 0.006
 """How far past the loop's measured width the closed pads aim [m]. The same value
-the rod and cup scenes use: the loop stands above the toy, so the pads close on
-its cord's sides and a deep overshoot is what holds it.
+the rod and cup scenes use: the pads close on the cord's rim from either side and
+a deep overshoot is what holds it.
 """
 PAD_HALF_THICKNESS = 0.003
 PAD_HALF_WIDTH = 0.006
@@ -322,7 +321,9 @@ def run(out: Path, *, steps: int, render_every: int = 0, coarse: bool = True) ->
     if render_every:
         from robosimstudio.core.render.video import VideoSet
 
-        videos = VideoSet(str(out), fps=max(1, CONTROL_HZ // render_every))
+        # Written at 60 fps: each rendered control frame fills a 60th times the
+        # render interval, so the video runs at the scene's own speed.
+        videos = VideoSet(str(out), fps=60, holds=max(1, 60 * render_every // CONTROL_HZ))
         videos.__enter__()
     started = time.perf_counter()
     try:

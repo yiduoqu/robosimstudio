@@ -509,7 +509,9 @@ def run(
     if render_every:
         from robosimstudio.core.render.video import VideoSet
 
-        videos = VideoSet(str(out), fps=max(1, CONTROL_HZ // render_every))
+        # Written at 60 fps: each rendered control frame fills a 60th times the
+        # render interval, so the video runs at the scene's own speed.
+        videos = VideoSet(str(out), fps=60, holds=max(1, 60 * render_every // CONTROL_HZ))
         videos.__enter__()
     diagnostics = []
     seat_frame = None

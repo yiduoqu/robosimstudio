@@ -143,15 +143,15 @@ contacts, ``rim-blocks-pads``).
 PUSH_RATE = 0.030
 """How fast the chase descends [m/s]. Faster was measured and rejected: at
 75 mm/s the pads met the released toy while it was still rocking on the rim and
-knocked it off the bench (i6, i7: settled clearance -0.75 m, no insertion).
+knocked it off the bench, for no insertion at all.
 """
 PUSH_TIME = 3.0
 """How long the chase may descend, and so how far [s]. The pads do not chase the
 falling toy: they hold still for ``SETTLE_TIME`` while gravity settles it, then
 approach the body's top, and the first body-particle contact stops the approach.
-Until it does, the run reports no press. Measured, i4: the toy hangs 198 mm below
-the pinch, so 3 s (90 mm) leaves the pads 120 mm above the body's top and the
-press never touches it; longer bounds let the toy slip off the rim first (i5).
+Until it does, the run reports no press. Measured: the toy hangs 198 mm below the
+pinch, so 3 s (90 mm) leaves the pads 120 mm above the body's top and the press
+never touches it, while longer bounds let the toy slip off the rim first.
 """
 PRESS_DEPTH = 0.085
 PRESS_RATE = 0.020
@@ -704,7 +704,9 @@ def run(
     if render_every:
         from robosimstudio.core.render.video import VideoSet
 
-        videos = VideoSet(str(out), fps=max(1, CONTROL_HZ // render_every))
+        # Written at 60 fps: each rendered control frame fills a 60th times the
+        # render interval, so the video runs at the scene's own speed.
+        videos = VideoSet(str(out), fps=60, holds=max(1, 60 * render_every // CONTROL_HZ))
         videos.__enter__()
     try:
         for frame in range(steps):

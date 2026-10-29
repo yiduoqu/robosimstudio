@@ -231,6 +231,12 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
     base = ring["base_local_y"]
     pose = (SOURCE_X, float(-hole[1]), float(-vertices[:, 2].min()) + 0.001)
     grip_z = float(pose[2] + hole[2])
+    if not coarse:
+        # The stock solver meets the loop differently: a grip aimed at the modelled
+        # height closed above it (measured: 0.03 N of jaw effort, no contact). Start
+        # the pads at the bench instead, their bottom faces 2 mm over it, which
+        # straddles the loop wherever it settled.
+        grip_z = float(ParallelGripperSpec.pad_half_height + 0.002)
     hole_height = float(hole[1] - base)
     seat_drop = ring["hole_inradius"] - rod_radius
     rod_z = seat_drop + hole_height + CLEARANCE

@@ -350,7 +350,7 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
         name="overview",
         width=960,
         height=540,
-        eye=(0.66, -0.36, 1.05),
+        eye=(0.70, -0.44, 1.08),
         look_at=(0.46, 0.06, 0.92),
         fov_y=45.0,
     )

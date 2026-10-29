@@ -33,7 +33,7 @@ dependencies = [
     # [sim] carries mujoco and mujoco-warp, which the default rigid solver needs
     # at runtime; newton imports them lazily, so a bare "newton" resolves and
     # then cannot step an arm.
-    "newton[sim]>=1.7,<1.8",
+    "newton[sim]>=1.8.0.dev0,<1.9",
     "numpy",
     # ModelBuilder.approximate_meshes(method="convex_hull") imports scipy.spatial
     # at call time, and every scene with a hand in it calls it.
@@ -80,7 +80,8 @@ cpu = ["robosimstudio[superdex]"]
 #   uv export --frozen --extra genesis --extra dev --no-group rtx --no-emit-project --no-hashes > /tmp/greq.txt
 #   uv venv --python 3.12 /tmp/gvenv && uv pip install --python /tmp/gvenv/bin/python -r /tmp/greq.txt
 #   PYTHONPATH=$PWD CUDA_VISIBLE_DEVICES=0 QD_VISIBLE_DEVICE=0 /tmp/gvenv/bin/python -m unittest tests.test_genesis
-# genesis-world 1.3.3 resolves beside newton 1.7 and mujoco 3.15 in this lock.
+# genesis-world 1.3.3 resolves beside the local Newton 1.8 development source
+# and mujoco 3.15 in this lock; the Genesis runtime is not part of this scene.
 genesis = [
     "genesis-world==1.3.*",
     "torch",
@@ -89,7 +90,7 @@ genesis = [
 ]
 # The OVRTX path-traced renderer. Pinned: its render-var names and readback API
 # are private surface. pyglet is here because Newton's viewer camera imports
-# pyglet.math at call time. Newton 1.7's ViewerRTX drives OVRTX 0.4 and newer
+# pyglet.math at call time. Newton's ViewerRTX drives OVRTX 0.4 and newer
 # through OVStage's scene interface and refuses to start without it. OVStage
 # 0.1.1 is the oldest Newton accepts; ovrtx 0.4.0 cannot populate a stage
 # through it ("Stage reader/writer legacy interface is unavailable"), and 0.4.1
@@ -191,6 +192,7 @@ include = [
 # NVIDIA's index, for ovrtx only: PyPI does not carry it. Explicit, so nothing
 # else may come from it.
 [tool.uv.sources]
+newton = { path = "../newton", editable = true }
 ovrtx = { index = "nvidia" }
 # The graph runtime at the revision every graph here was measured against.
 graph-as-policy = { git = "https://github.com/KeplerC/graph-as-policy.git", rev = "09e45f8de27bc1a29629382ed7c2b9b4b384b3d6" }

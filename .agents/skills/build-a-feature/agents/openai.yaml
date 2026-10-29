@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build a Feature"
+  short_description: "Implement and validate an RSS feature autonomously"
+  default_prompt: "Use $build-a-feature to implement and validate the requested RoboSimStudio change autonomously."

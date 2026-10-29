@@ -553,7 +553,9 @@ class Entity:
         with ``visible=False`` does. Every drawing path honours that flag, and the
         studio's materials and the path tracer's finishes ignore the alpha (see
         :func:`~robosimstudio.scene.build.imports.is_transparent`).
-        Collision, mass and the shape's body are left as they are.
+        Visibility alone leaves collision, mass and the shape's body intact.
+        An explicit ``collide=False`` excludes this entity's shapes from both
+        rigid-shape and particle contacts, including contacts with deformables.
         """
         from robosimstudio.core.render.finish import finish_for
         from robosimstudio.core.render.palette import default_for, is_build_order_color
@@ -570,7 +572,7 @@ class Entity:
             if not visible or is_transparent(builder, s):
                 builder.shape_flags[s] &= ~int(newton.ShapeFlags.VISIBLE)
             if not collide:
-                builder.shape_flags[s] &= ~int(newton.ShapeFlags.COLLIDE_SHAPES)
+                builder.shape_flags[s] &= ~int(newton.ShapeFlags.COLLIDE_SHAPES | newton.ShapeFlags.COLLIDE_PARTICLES)
             # A colour on a textured shape is what clear_texture_tints undoes,
             # scene-wide, once every import has run. Skipping here as well is not
             # redundant: this method is reachable from build_into without the

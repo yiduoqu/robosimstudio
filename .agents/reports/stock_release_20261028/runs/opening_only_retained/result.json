@@ -1,0 +1,24 @@
+{
+  "task": "pickup_transport_airborne_release",
+  "transit_body_lift_m": 0.28331315517425537,
+  "transit_clearance_m": 0.22814196348190308,
+  "bilateral_ring_grasp": true,
+  "released": false,
+  "contact_free_flight_samples": 0,
+  "contact_free_flight_window_s": null,
+  "contact_free_com_fall_m": 0.0,
+  "mean_contact_free_com_acceleration_m_s2": null,
+  "model_gravity_m_s2": [
+    -0.0,
+    -0.0,
+    -9.8100004196167
+  ],
+  "gravity_relative_error": null,
+  "first_post_release_table_contact_s": null,
+  "max_pre_impact_inverted_tetrahedra": 0,
+  "max_inverted_tetrahedra": 0,
+  "minimum_tet_volume_ratio": 0.3997255861759186,
+  "airborne_release_success": false,
+  "all_episode_mesh_integrity_pass": true,
+  "success": false
+}

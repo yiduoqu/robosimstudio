@@ -141,18 +141,17 @@ bore by 3 mm; at 40 mm it was 53 mm and touched the wall (88 finger-container
 contacts, ``rim-blocks-pads``).
 """
 PUSH_RATE = 0.030
-PUSH_TIME = 7.0
-"""How long the chase may descend, and so how far [s]. The bound only has to
-reach the body: the chase ends at the first pad-body contact. Measured, i4: the
-toy hangs 198 mm below the pinch, so 3 s (90 mm) left the pads 120 mm above the
-body's top and the press never touched it.
+"""How fast the chase descends [m/s]. Faster was measured and rejected: at
+75 mm/s the pads met the released toy while it was still rocking on the rim and
+knocked it off the bench (i6, i7: settled clearance -0.75 m, no insertion).
 """
-"""How fast the open pads descend to the body after the release, and for how
-long [m/s, s]. The pads do not chase the falling toy: they hold still for
-``SETTLE_TIME`` while gravity settles it, then approach the body's top slowly.
-The first body-particle contact stops the approach. Until it does, the run
-reports no press. A 60 mm/s chase was measured to hit the loop first and turn
-the press into a tip.
+PUSH_TIME = 3.0
+"""How long the chase may descend, and so how far [s]. The pads do not chase the
+falling toy: they hold still for ``SETTLE_TIME`` while gravity settles it, then
+approach the body's top, and the first body-particle contact stops the approach.
+Until it does, the run reports no press. Measured, i4: the toy hangs 198 mm below
+the pinch, so 3 s (90 mm) leaves the pads 120 mm above the body's top and the
+press never touches it; longer bounds let the toy slip off the rim first (i5).
 """
 PRESS_DEPTH = 0.085
 PRESS_RATE = 0.020

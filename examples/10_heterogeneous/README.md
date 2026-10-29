@@ -45,7 +45,7 @@ positions, contacts, and video as well as the result summary: this is an
 initial contact-manipulation scene, not a claim that every intermediate FEM
 element remains inversion-free.
 
-## The rod and the container: two scenes for a parallel claw
+## The rod, the container and a pick-and-drop: three scenes for a parallel claw
 
 `clawhauser_on_rod.py` and `clawhauser_stuff_into_bottle.py` build the same
 parallel claw: a level 120 x 30 x 18 mm carrier, two 10 x 12 x 42 mm finger
@@ -70,7 +70,8 @@ extent), and the measured outcomes:
 | Scene | What it asks | What it measured |
 |---|---|---|
 | `clawhauser_on_rod.py` | pinch the loop's sides, lift, thread the rod's free end through the hole, seat the toy on the rod, open, withdraw | 3 of 3: seated at frame 150, rod carries 1.212-1.220 N of the 1.227 N toy with the jaws open, 26.2-26.4 mm of bench clearance, peak jaw 4.76-4.78 / 4.68-4.70 N under the 5 N clamp, 4.7e-5 m penetration, 0 inverted tets |
-| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, let gravity settle it, land the pads on the body's top, press the body 85 mm under the 200 N budget, hold, open while lifting | 3 of 3 released and wedged: 85.3 mm of insertion, 53.0-57.8% of the volume inside, 363-371 frames of body contact, 145.4-200.0 N push peak, 0.60-0.99 mm into the container's shell, 0-1 inverted tets; the judge refuses all three on its 0.5 mm shell gate, which is what 200 N does to this toy. At 100 N the same path lands 48.1-59.0% inside with 0.25-0.60 mm and 1 of 3 releases. Before the press spring was stiffened the same command measured only 63.0 N and passed 3 of 3 at 46.1-48.2%, 0.12-0.43 mm |
+| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, let gravity settle it, land the pads on the body's top, press the body 85 mm under the 200 N budget, hold, open while lifting | 3 of 3 released and wedged: 85.3-85.4 mm of insertion, 49.4-65.3% of the volume inside, 298-373 frames of body contact, 47.8-200.0 N push peak, 0.31-2.05 mm into the container's shell, 0-2 inverted tets; the judge refuses all three on its 0.5 mm shell gate and one on a local inversion, which is what 200 N does to this 1.2 N toy. At 63.0 N (the soft spring's ceiling) the same path passed 3 of 3 at 46.1-48.2% and 0.12-0.43 mm |
+| `clawhauser_pick_drop.py` | pinch the loop, lift the toy 210 mm clear of the bench, carry it 80 mm, open and let it fall, then check it came to rest | 3 of 3: lifted 210.7-210.8 mm with 7 pad contacts, carried 67.0-67.1 mm (the toy trails the claw), rolled 88.5-105.7 mm after the release, settled 0.7 mm above the bench, 4.5e-5 m penetration, 0 inverted tets |
 
 Run either scene the same way as the baseline, with `--render-every 3` for the
 video. Both run at the pipeline's default `mu`; the cup's carry held at 0.9 in
@@ -79,7 +80,20 @@ every 200 N run.
 ```bash
 python examples/10_heterogeneous/clawhauser_on_rod.py  --out OUT --render-every 3
 python examples/10_heterogeneous/clawhauser_stuff_into_bottle.py --out OUT --render-every 3
+python examples/10_heterogeneous/clawhauser_pick_drop.py --out OUT --render-every 3
 ```
+
+`clawhauser_pick_drop.py` is the third task: the same claw and the same standing
+start, no rod and no cup -- close on the loop, lift 210 mm, carry 80 mm, open and
+drop. Its judge asks for the release, the carried distance measured at the last
+frame the pads hold (where the toy rolls to afterwards is not what the carry
+did), a settled clearance of 0-2 mm and an intact mesh; `rolled_after_release_m`
+reports the roll separately.
+
+The three cameras were pulled back 20% (`eye - look_at` scaled, target
+unchanged), then raised 50 mm: the first pull-back still clipped the carrier at
+the top of the lift. The pick-and-drop sits further out again, because its lift
+is 210 mm.
 
 Controls and knobs, each reported with its measured effect:
 
@@ -147,7 +161,16 @@ pad positions.
 5. **The clamp is applied in float32**, so a run that sits on it reports the
    cap's own representation: 5.0000005 against a float64 5.0. The gates allow
    one part in a million for that, and nothing more.
-6. **Self-contact is millimetre-scale.** Newton's solver default is a 0.2 m
+6. **A lying start is not reachable with this claw.** Asked for and built: the
+toy on its back, the loop on the bench. Aimed at the mesh's hole the pads closed
+30 mm above the loop (no finger contacts through 45 frames, the ring sinking
+14 mm as the jaws shut); aimed at the placed cord they closed across the toy's
+110 mm width and both finger slides blew to -0.35/+0.42 m within four frames
+(q5, q6). The loop is at the toy's end, so one pad always lands on the body, and
+the 120 mm carrier's underside sits 36 mm above the pad centres -- a bench-level
+loop cannot be reached without the carrier inside the 73 mm body. Both scenes
+keep the standing start (D18).
+7. **Self-contact is millimetre-scale.** Newton's solver default is a 0.2 m
    margin; at that value every particle pair touches and the toy explodes on
    frame 1. The scenes pin 2 mm margin, 2 mm radius, topological filter 2 and
    6 mm rest-shape exclusion; a 2 mm rest exclusion left the 6 mm grasp squeeze

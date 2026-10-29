@@ -78,7 +78,7 @@ SOURCE_HASHES = {
 }
 
 
-def build_scene(*, coarse: bool):
+def build_scene(*, coarse: bool, self_contact: bool = True):
     for relative, expected in SOURCE_HASHES.items():
         actual = hashlib.sha256((ASSET / relative).read_bytes()).hexdigest()
         if actual != expected:
@@ -117,7 +117,7 @@ def build_scene(*, coarse: bool):
 
     common = {
         "iterations": 12,
-        "particle_enable_self_contact": True,
+        "particle_enable_self_contact": self_contact,
         "particle_self_contact_radius": 0.002,
         "particle_self_contact_margin": 0.002,
         "particle_topological_contact_filter_threshold": 2,
@@ -291,9 +291,11 @@ def judge(geometry: dict, diagnostics, quality, entity, steps: int) -> dict:
     return result
 
 
-def run(out: Path, *, steps: int, render_every: int = 0, coarse: bool = True) -> dict:
+def run(
+    out: Path, *, steps: int, render_every: int = 0, coarse: bool = True, enable_self_contact: bool = True
+) -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    sim, obj, jaw, camera, geometry = build_scene(coarse=coarse)
+    sim, obj, jaw, camera, geometry = build_scene(coarse=coarse, self_contact=enable_self_contact)
     entity = obj.entity
     particles = entity.particles
     tets = entity.source_tets
@@ -303,8 +305,8 @@ def run(out: Path, *, steps: int, render_every: int = 0, coarse: bool = True) ->
         "margin_m": float(getattr(solver, "particle_self_contact_margin", 0.0)),
         "rest_exclusion_m": float(getattr(solver, "particle_rest_shape_contact_exclusion_radius", 0.0)),
     }
-    if not self_contact["enabled"]:
-        raise RuntimeError("self-contact is off in the VBD solver")
+    if self_contact["enabled"] != enable_self_contact:
+        raise RuntimeError("the solver's self-contact setting does not match the scene's")
     quality = MeshQuality(sim, entity)
     dt = 1.0 / (CONTROL_HZ * SUBSTEPS)
     q0 = sim.pipeline.state_0.particle_q.numpy()[particles]
@@ -383,8 +385,17 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=round(DURATION * CONTROL_HZ))
     parser.add_argument("--render-every", type=int, default=0)
     parser.add_argument("--no-coarse", action="store_true", help="stock VBD, no common-translation solve")
+    parser.add_argument(
+        "--no-self-contact", dest="self_contact", action="store_false", help="turn the toy's self-contact off"
+    )
     args = parser.parse_args()
-    run(args.out, steps=args.steps, render_every=args.render_every, coarse=not args.no_coarse)
+    run(
+        args.out,
+        steps=args.steps,
+        render_every=args.render_every,
+        coarse=not args.no_coarse,
+        enable_self_contact=args.self_contact,
+    )
 
 
 if __name__ == "__main__":

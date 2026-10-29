@@ -208,7 +208,7 @@ SOURCE_HASHES = {
 }
 
 
-def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | None = None):
+def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | None = None, self_contact: bool = True):
     for relative, expected in SOURCE_HASHES.items():
         actual = hashlib.sha256((ASSET / relative).read_bytes()).hexdigest()
         if actual != expected:
@@ -271,7 +271,7 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
 
     common = {
         "iterations": 12,
-        "particle_enable_self_contact": True,
+        "particle_enable_self_contact": self_contact,
         # Millimetre-scale self-contact: the solver's own default margin is
         # 0.2 m, which makes every particle pair touch and the toy explode.
         "particle_self_contact_radius": 0.002,
@@ -485,10 +485,11 @@ def run(
     coarse: bool = True,
     rod_radius: float = ROD_RADIUS,
     mu: float | None = None,
+    enable_self_contact: bool = True,
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     sim, obj, grip, camera, rod, ring, geometry = build_scene(
-        coarse=coarse, rod_radius=rod_radius, mu=mu
+        coarse=coarse, rod_radius=rod_radius, mu=mu, self_contact=enable_self_contact
     )
     entity = obj.entity
     particles = entity.particles
@@ -500,8 +501,8 @@ def run(
         "margin_m": float(getattr(solver, "particle_self_contact_margin", 0.0)),
         "rest_exclusion_m": float(getattr(solver, "particle_rest_shape_contact_exclusion_radius", 0.0)),
     }
-    if not self_contact["enabled"]:
-        raise RuntimeError("self-contact is off in the VBD solver: the toy would not fold on itself")
+    if self_contact["enabled"] != enable_self_contact:
+        raise RuntimeError("the solver's self-contact setting does not match the scene's")
     print(json.dumps({"self_contact": self_contact}), flush=True)
     quality = MeshQuality(sim, entity)
     dt = 1.0 / (CONTROL_HZ * SUBSTEPS)
@@ -739,6 +740,9 @@ def main() -> None:
     parser.add_argument("--no-coarse", dest="coarse", action="store_false")
     parser.add_argument("--rod-radius", type=float, default=ROD_RADIUS, help="rod radius [m]")
     parser.add_argument("--mu", type=float, default=None, help="global soft-contact friction coefficient")
+    parser.add_argument(
+        "--no-self-contact", dest="self_contact", action="store_false", help="turn the toy's self-contact off"
+    )
     args = parser.parse_args()
     run(
         args.out,
@@ -747,6 +751,7 @@ def main() -> None:
         coarse=args.coarse,
         rod_radius=args.rod_radius,
         mu=args.mu,
+        enable_self_contact=args.self_contact,
     )
 
 

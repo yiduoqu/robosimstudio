@@ -91,7 +91,7 @@ def _drive_carrier(
     gravity: wp.array[wp.vec3],
     ke: float,
     kd: float,
-    push_kd: float,
+    press_ke: float,
     limit: float,
     compensate_gravity: bool,
     pressing: wp.array[int],
@@ -100,14 +100,14 @@ def _drive_carrier(
     peak_force: wp.array[float],
     peak_torque: wp.array[float],
 ):
-    """Carry the carrier on its guide, and press through a rate command.
+    """Carry the carrier on its guide, and press against the push budget.
 
-    Two modes, chosen by the claw's own state. Carrying is a PD on the guide's
-    vertical coordinate, so the pads sit on the path. Pressing is a damper on the
-    guide's own descent: ``push_kd * (guide_rate - carrier_rate)``, clipped at
-    the push budget. The cap is then the force the body sees -- a PD could not
-    do it, because its force is ``ke * lag`` and 1500 N/m over the 85 mm stroke
-    tops out at 127 N, so the clamp was decoration.
+    Two modes, chosen by the claw's own state, differing only in stiffness. The
+    press needs a stiff one because the force is ``ke * lag``: 1500 N/m reaches
+    only 127 N over the whole 85 mm stroke, so the budget was decoration, while
+    50 kN/m reaches 200 N in 4 mm and the pads still follow the path instead of
+    sinking into the body. A commanded force was tried and is worse -- with no
+    position term the pads drove 20-40 mm past the path, through the toy.
 
     The coordinate is read from the bodies, not the joint q: the joint's q sign
     is the solver's, and a PD aimed at the wrong sign drove the carrier 40 mm
@@ -125,13 +125,8 @@ def _drive_carrier(
         wp.spatial_bottom(body_qd[carrier]), child_origin - wp.transform_point(child, body_com[carrier])
     )
     rate = wp.dot(child_velocity - parent_velocity, axis)
-    if pressing[0] != 0:
-        # The guide's descent is the target rate, so the path bounds the travel
-        # and the damper bounds the force: a blocked carrier sees the whole
-        # budget, a body that yields simply takes less of it.
-        effort = -push_kd * rate
-    else:
-        effort = ke * (0.0 - coordinate) + kd * (0.0 - rate)
+    stiffness = press_ke if pressing[0] != 0 else ke
+    effort = stiffness * (0.0 - coordinate) + kd * (0.0 - rate)
     if compensate_gravity:
         for link in range(3):
             body = carrier if link == 0 else fingers[link - 1]
@@ -240,10 +235,11 @@ class ParallelGripperSpec:
     jaw_kd: float = 15.0
     carrier_ke: float = 1500.0
     carrier_kd: float = 42.0
-    carrier_push_kd: float = 10000.0
-    """The press's rate gain [N*s/m]. Against the 20 mm/s press a blocked carrier
-    saturates the push budget, which is what makes the clamp the force the body
-    sees rather than the spring's lag.
+    carrier_press_ke: float = 50000.0
+    """The carrier's stiffness while pressing [N/m]. The press force is this
+    spring's lag, so it has to be stiff enough to reach the push budget inside a
+    few millimetres; at the carrying 1500 N/m the budget was unreachable and the
+    pads lagged 40 mm, which just buried them in the body.
     """
     gravity_compensation: bool = True
     pad_half_thickness: float = 0.003
@@ -289,7 +285,7 @@ class ParallelGripperSpec:
             self.jaw_kd,
             self.carrier_ke,
             self.carrier_kd,
-            self.carrier_push_kd,
+            self.carrier_press_ke,
         )
         if not np.isfinite(positive).all() or min(positive) <= 0 or not np.isfinite(gains).all() or min(gains) < 0:
             raise ValueError("parallel claw dimensions, masses, limits and rates must be positive")
@@ -545,7 +541,7 @@ class ParallelGripper(rss.Entity):
                 model.gravity,
                 spec.carrier_ke,
                 spec.carrier_kd,
-                spec.carrier_push_kd,
+                spec.carrier_press_ke,
                 spec.push_force_limit,
                 spec.gravity_compensation,
                 self._pressing,

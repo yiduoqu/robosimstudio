@@ -53,11 +53,12 @@ posts on native prismatic slides, and 6 x 12 x 12 mm pad inserts on the posts'
 inner faces. Each post runs from the pad's bottom face to the carrier's
 underside, so the pad sits flush in the post and the finger is one column. The pads cannot rotate, and there is no ledge: the pad face and its
 friction are the only grip aids. The jaws close under a 5 N clamp; the carrier
-is the press path under a separate 200 N clamp, so `peak_force_n` is the jaw peak
-and `peak_push_force_n` the press peak. The 200 N is the top of a measured
-ladder: 50 N reached its clamp (peak 50.0 N) and passed 2 of 3, 100 N passed 1 of
-3, and at 200 N the pads follow their path without reaching the clamp
-(9.5-63.0 N) and pass 3 of 3. The toy's self-contact is on (2 mm
+is the press path under a separate 200 N budget, so `peak_force_n` is the jaw
+peak and `peak_push_force_n` the press peak. The press runs the same path at the
+same rate as the carry and differs only in stiffness (50 kN/m against 1.5), so
+the force is `ke * lag` and the budget is reachable inside 4 mm: measured
+145-200 N at the 200 N budget and exactly 100.0 N at 100 N, where the 1.5 kN/m
+carry spring capped the same command at 63 N. The toy's self-contact is on (2 mm
 margin, 6 mm rest-shape exclusion), and the coarse common-translation solve
 stays the pipeline's weight fix. Both scenes print and record the self-contact
 state, and both refuse particle-body attachments.
@@ -69,7 +70,7 @@ extent), and the measured outcomes:
 | Scene | What it asks | What it measured |
 |---|---|---|
 | `clawhauser_on_rod.py` | pinch the loop's sides, lift, thread the rod's free end through the hole, seat the toy on the rod, open, withdraw | 3 of 3: seated at frame 150, rod carries 1.212-1.220 N of the 1.227 N toy with the jaws open, 26.2-26.4 mm of bench clearance, peak jaw 4.76-4.78 / 4.68-4.70 N under the 5 N clamp, 4.7e-5 m penetration, 0 inverted tets |
-| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, let gravity settle it, land the pads on the body's top, press the body 85 mm under the 200 N clamp, hold, open while lifting | 3 of 3: 85.3 mm of insertion, 46.1-48.2% of the volume inside, 401-403 frames of body contact, 188-271 body particles at the peak, 60.5-63.0 N push peak under the 200 N clamp, 0.12-0.67 mm into the container's shell and 0.56-0.67 mm of pad indentation into the plush, wedged after release, 0 inverted tets in 2 runs (1 transient in the third), `success: true`; at 50 N the same press passed 2 of 3, and the run that stuck pressed 97 mm and reported `released: false` |
+| `clawhauser_stuff_into_bottle.py` | pinch the loop, carry the toy over a 100 mm bore, lower it tail first, release, let gravity settle it, land the pads on the body's top, press the body 85 mm under the 200 N budget, hold, open while lifting | 3 of 3 released and wedged: 85.3 mm of insertion, 53.0-57.8% of the volume inside, 363-371 frames of body contact, 145.4-200.0 N push peak, 0.60-0.99 mm into the container's shell, 0-1 inverted tets; the judge refuses all three on its 0.5 mm shell gate, which is what 200 N does to this toy. At 100 N the same path lands 48.1-59.0% inside with 0.25-0.60 mm and 1 of 3 releases. Before the press spring was stiffened the same command measured only 63.0 N and passed 3 of 3 at 46.1-48.2%, 0.12-0.43 mm |
 
 Run either scene the same way as the baseline, with `--render-every 3` for the
 video. Both run at the pipeline's default `mu`; the cup's carry held at 0.9 in
@@ -89,9 +90,9 @@ Controls and knobs, each reported with its measured effect:
   inverted its rim tets. 100 mm is the default.
 - `--mu`: the pipeline's single global soft friction coefficient. 0.9 for the
   rod; 2.0 for the cup's loop grip.
-- `--cap` / `--push-cap`: the jaw closing clamp and the carrier push clamp [N].
-  The jaws never exceed 5 N; the press is bounded by distance at the default
-  200 N and measured 9.5-63.0 N on this body.
+- `--cap` / `--push-cap`: the jaw closing clamp and the carrier push budget [N].
+  The jaws never exceed 5 N; the press measures 145-200 N at the 200 N default
+  and 100.0 N at 100 N, over the same 85 mm path.
 - `--rod-radius`: 6 mm; the rod carries the toy at 1.16-1.19 N.
 
 The cup flow: close on the loop, carry over the 100 mm bore, descend tail first,

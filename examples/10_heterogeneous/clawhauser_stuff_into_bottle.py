@@ -120,10 +120,10 @@ CONTACT_KE = 100000.0
 the summed penetration a contact patch reports."""
 COARSE_BUDGET = 0.005
 """Cumulative coarse translation per substep, at most a quarter of the gap."""
-GRIP_SQUEEZE = 0.006
-"""How far past the loop's measured width the closed pads aim [m]. The same
-measured value the rod scene uses. The parallel jaws hold the pads' attitude, so
-the loop cannot roll them, and the flat face plus its friction is the grip.
+HEAD_SQUEEZE = 0.004
+"""How far past the head's measured half-width the closed pads aim [m]. The head
+is a 40 mm-thick plush: the pads compress it by 4 mm a side and hang the toy from
+that pinch, tail down.
 """
 PAD_HALF_THICKNESS = 0.003
 """The pad box's half-extent along the closing axis, as ``gripper.py`` builds it."""
@@ -235,25 +235,28 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
     ring["body_ids"] = np.unique(tets[labels == 1])
 
     # Lying flat, in its own rest pose: no rotation, so the mesh's +z is up and
-    # the body's lowest vertex is what rests it on the bench. The loop is a ring
-    # on a stem at the head's end, so lying down it floats at the body's
-    # mid-thickness, beyond the head, with its plane horizontal -- the pads close
-    # on its rim from either side at ``grip_z``.
+    # the body's lowest vertex is what rests it on the bench. The grasp is the
+    # body's own top, not the loop: lying down the loop is a limp hoop in a
+    # horizontal plane and a rim pinch of it hangs the toy canted (measured: 80 mm
+    # off the pads, and the body then rolls off the rim), while the head is a
+    # 40 mm-thick plush the pads can close on and hang the toy from, tail down.
     quat = (0.0, 0.0, 0.0, 1.0)
     hole = ring["hole_centre_local"]
     base = ring["base_local_y"]
-    # Laid down so the ring's hole sits on the claw's own y: the body lies behind
-    # it, and the toy is carried over the bore without a lateral detour.
-    pose = (SOURCE_X, float(-hole[1]), float(-vertices[:, 2].min()) + 0.001)
-    grip_z = float(pose[2] + hole[2])
-    # How far the toy hangs below the pinch once it is off the bench: the same
-    # 198 mm the standing start measures, because the body hangs from the loop
-    # either way. It is what the lift has to clear the rim by.
-    hole_height = float(hole[1] - base)
+    body_vertices = vertices[np.unique(tets[labels == 1])]
+    head = body_vertices[body_vertices[:, 1] >= body_vertices[:, 1].max() - 0.030]
+    head_half_x = float(np.abs(head[:, 0]).max())
+    grip_y = 0.5 * (float(head[:, 1].min()) + float(head[:, 1].max()))
+    # Laid down so the head's centre is on the claw's own y: the toy hangs from
+    # the pinch with its tail below it, which is the pose the press was built
+    # around.
+    pose = (SOURCE_X, -grip_y, float(-vertices[:, 2].min()) + 0.001)
+    grip_z = float(pose[2] + head[:, 2].mean())
+    # How far the toy hangs below the pinch once it is off the bench: the head's
+    # centre to the tail's end. It is what the lift has to clear the rim by.
+    hang_drop = float(grip_y - vertices[:, 1].min())
     # The tail is what goes in first, so it is the tail's own centre that gets
-    # carried over the container's axis. Centring the hole instead leaves the
-    # tail 3.5 mm off-axis, and the tail's 47 by 36 mm section has 0.8 mm of
-    # diametral clearance in a 60 mm bore: it would be riding on the facet edge.
+    # carried over the container's axis.
     tail_tets = np.where(labels == 0)[0]
     tail_vertices = vertices[np.unique(tets[tail_tets])]
     tail_centre = vertices[tets[tail_tets]].mean(axis=1).mean(axis=0)
@@ -263,13 +266,14 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         "hole_inradius_median_m": ring["hole_inradius_median"],
         "loop_reach_m": ring["side_reach"],
         "pad_half_thickness_m": PAD_HALF_THICKNESS,
-        "grip_squeeze_m": GRIP_SQUEEZE,
+        "grip_squeeze_m": HEAD_SQUEEZE,
         "toy_height_m": float(vertices[:, 1].max() - base),
-        "hole_height_m": hole_height,
-        # Where the jaws close and how wide the thing they close on is: the loop's
-        # own centre and its outer reach, as in Scene A. See the gripper's note.
+        "hang_drop_m": hang_drop,
+        # Where the jaws close and how wide the thing they close on is: the
+        # body's top band and its own half-width, not the loop.
         "grip_z_m": grip_z,
-        "grip_reach_m": ring["side_reach"],
+        "grip_y_m": 0.0,
+        "grip_reach_m": head_half_x,
         "pad_half_width_m": PAD_HALF_WIDTH,
         # The ledges gripper.py builds under each pad (2.4 mm tall, 3 mm inboard
         # of the pad's face): the grasp rests on them, so the run says so.
@@ -278,7 +282,10 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         "bore_radius_m": bore,
         "rim_z_m": RIM_Z,
         "floor_z_m": FLOOR_Z,
-        "lift_m": RIM_Z + LIFT_CLEARANCE + hole_height - grip_z,
+        "lift_m": RIM_Z + LIFT_CLEARANCE + hang_drop - grip_z,
+        # The tail hangs under the pinch, so the carry is the distance between the
+        # two poses and nothing else.
+        "carry_m": TARGET_X - SOURCE_X,
         "tail_centre_local": np.round(tail_centre, 4).tolist(),
         "tail_extent_m": np.round(np.ptp(tail_vertices, axis=0), 4).tolist(),
         "lower_m": APPROACH - LIFT_CLEARANCE,
@@ -387,14 +394,13 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
     )
     grip = scene.add(
         ParallelGripperSpec(
-            # The loop's sides. The parallel jaws hold the pads' attitude, so the
-            # loop cannot roll them off; the flat face and its friction are the
-            # grip. After the stall the body is pressed by the carrier, whose
-            # push budget is separate from the jaws' 5 N closing clamp.
+            # The head's sides. The pads compress the plush and the toy hangs from
+            # the pinch, tail down. After the stall the body is pressed by the
+            # carrier, whose push budget is separate from the jaws' 5 N clamp.
             name="bottle_loop_gripper",
-            center=(SOURCE_X + float(hole[0]), 0.0, grip_z),
-            half_gap=ring["side_reach"] + PAD_HALF_THICKNESS + 0.012,
-            closed_half_gap=ring["side_reach"] + PAD_HALF_THICKNESS - GRIP_SQUEEZE,
+            center=(SOURCE_X + float(head[:, 0].mean()), 0.0, grip_z),
+            half_gap=head_half_x + PAD_HALF_THICKNESS + 0.006,
+            closed_half_gap=head_half_x + PAD_HALF_THICKNESS - HEAD_SQUEEZE,
             pad_half_thickness=PAD_HALF_THICKNESS,
             pad_half_width=PAD_HALF_WIDTH,
             force_limit=cap,
@@ -408,7 +414,9 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         name="overview",
         width=960,
         height=540,
-        eye=(0.74, -0.48, 1.14),
+        # Pulled back 20% from the standing start's framing: the toy now lies 220 mm
+        # along y, toward the camera, instead of standing 220 mm up.
+        eye=(0.768, -0.576, 1.178),
         look_at=(0.60, 0.0, 0.95),
         fov_y=45.0,
     )

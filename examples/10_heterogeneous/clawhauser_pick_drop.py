@@ -178,7 +178,9 @@ def build_scene(*, coarse: bool):
         name="overview",
         width=960,
         height=540,
-        eye=(0.80, -0.75, 1.42),
+        # Pulled back 20% from the standing start's framing: the toy now lies 220 mm
+        # along y, toward the camera, instead of standing 220 mm up.
+        eye=(0.858, -0.9, 1.514),
         look_at=(0.51, 0.0, 0.95),
         fov_y=45.0,
     )

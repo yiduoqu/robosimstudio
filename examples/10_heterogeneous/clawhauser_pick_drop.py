@@ -58,11 +58,15 @@ PAD_HALF_WIDTH = 0.006
 OPENED_HALF_GAP = 0.034
 """Where the jaws open to release: 68 mm, well outside the loop's 23 mm reach."""
 PHASES = {
-    "close": (0.6, 1.2),
-    "lift": (1.2, 2.8),
-    "hang": (2.8, 3.6),
-    "carry": (3.6, 4.8),
-    "open": (5.4, 5.8),
+    # Closed as early as the control loop allows: lying flat, the loop is a limp
+    # hoop and the toy slides across the bench within half a second of the scene
+    # starting (measured, p3: the pads closed 20 mm behind the hoop and lifted
+    # nothing).
+    "close": (0.0, 0.6),
+    "lift": (0.6, 2.2),
+    "hang": (2.2, 3.0),
+    "carry": (3.0, 4.2),
+    "open": (4.8, 5.2),
 }
 """Planned phase windows. ``hang`` is a phase with no motion: the toy comes off
 the bench at an angle and swings to hang from the pinch before it is carried.
@@ -89,26 +93,26 @@ def build_scene(*, coarse: bool):
         raise ValueError("Clawhauser source material estimates changed")
     ring = ring_geometry(vertices, tets, labels)
 
-    # Standing pose, tail down: the quarter turn about x the rod and cup scenes
-    # use, which puts the mesh's +y (the loop) up and its +z (the hole's axis)
-    # along world y. A lying start was measured and rejected: the loop sits at the
-    # toy's end, so the pads close along the toy's length, one on the loop and one
-    # on the 73 mm body beside it, and the claw breaks on the body (frame 5).
-    quat = (float(np.sin(np.pi / 4.0)), 0.0, 0.0, float(np.cos(np.pi / 4.0)))
+    # Lying flat in its own rest pose, grasped on the loop's rim: the same pose and
+    # grasp the cup scene uses. The toy's lowest vertex is what rests it on the
+    # bench, and the loop is a ring at its end lying in a horizontal plane.
+    quat = (0.0, 0.0, 0.0, 1.0)
     hole = ring["hole_centre_local"]
     base = ring["base_local_y"]
-    pose = (SOURCE_X, 0.0, -base + 0.001)
-    grip = (SOURCE_X, 0.0, float(hole[1] - base) + 0.001)
+    pose = (SOURCE_X, float(-hole[1]), float(-vertices[:, 2].min()) + 0.001)
+    grip = (SOURCE_X + float(hole[0]), 0.0, float(pose[2] + hole[2]))
+    hole_height = float(hole[1] - base)
     geometry = {
         "hole_centre_local": np.round(hole, 4).tolist(),
         "loop_reach_m": ring["side_reach"],
         "pad_half_thickness_m": PAD_HALF_THICKNESS,
         "grip_squeeze_m": GRIP_SQUEEZE,
         "grip_z_m": grip[2],
+        "hole_height_m": hole_height,
         "lift_m": LIFT_M,
         "carry_m": TARGET_X - SOURCE_X,
         "force_cap_n": GRASP_LIMIT_N,
-        "resting_pose": "180 deg about x, loop up",
+        "resting_pose": "lying flat, no rotation",
     }
     print(json.dumps({"geometry": geometry}), flush=True)
 
@@ -178,10 +182,11 @@ def build_scene(*, coarse: bool):
         name="overview",
         width=960,
         height=540,
-        # Pulled back 20% from the standing start's framing: the toy now lies 220 mm
-        # along y, toward the camera, instead of standing 220 mm up.
-        eye=(0.858, -0.9, 1.514),
-        look_at=(0.51, 0.0, 0.95),
+        # Framed for the lying start: the toy rests toward the camera, so the eye
+        # is pulled back and the view is aimed between the toy's rest and the place
+        # it is carried to.
+        eye=(0.835, -0.89, 1.476),
+        look_at=(0.51, -0.05, 0.95),
         fov_y=45.0,
     )
     camera = scene.add(camera_spec)

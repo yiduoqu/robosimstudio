@@ -120,10 +120,10 @@ CONTACT_KE = 100000.0
 the summed penetration a contact patch reports."""
 COARSE_BUDGET = 0.005
 """Cumulative coarse translation per substep, at most a quarter of the gap."""
-HEAD_SQUEEZE = 0.004
-"""How far past the head's measured half-width the closed pads aim [m]. The head
-is a 40 mm-thick plush: the pads compress it by 4 mm a side and hang the toy from
-that pinch, tail down.
+GRIP_SQUEEZE = 0.006
+"""How far past the loop's measured width the closed pads aim [m]. The same
+measured value the rod scene uses. The parallel jaws hold the pads' attitude, so
+the loop cannot roll them, and the flat face plus its friction is the grip.
 """
 PAD_HALF_THICKNESS = 0.003
 """The pad box's half-extent along the closing axis, as ``gripper.py`` builds it."""
@@ -141,7 +141,12 @@ bore by 3 mm; at 40 mm it was 53 mm and touched the wall (88 finger-container
 contacts, ``rim-blocks-pads``).
 """
 PUSH_RATE = 0.030
-PUSH_TIME = 3.0
+PUSH_TIME = 7.0
+"""How long the chase may descend, and so how far [s]. The bound only has to
+reach the body: the chase ends at the first pad-body contact. Measured, i4: the
+toy hangs 198 mm below the pinch, so 3 s (90 mm) left the pads 120 mm above the
+body's top and the press never touched it.
+"""
 """How fast the open pads descend to the body after the release, and for how
 long [m/s, s]. The pads do not chase the falling toy: they hold still for
 ``SETTLE_TIME`` while gravity settles it, then approach the body's top slowly.
@@ -160,10 +165,6 @@ enough that it never left at the then-50 N clamp; 85 mm is the span between them
 that still finishes inside the run. At the 200 N clamp the pads reach the 85 mm
 travel in 3 of 3 runs and peak at 9.5-63.0 N, so the clamp is no longer what
 stops them: 50 N reached it (peak 50.0 N, 2 of 3) and 100 N stalled 2 of 3.
-"""
-PRESS_FLOOR_CLEARANCE = 0.006
-"""How far above the container's floor the pads stop pressing [m], so a press
-toward a body that has already gone in cannot drive the pads into the floor.
 """
 PRESS_HOLD = 0.5
 """How long the press holds at its deepest pose [s]."""
@@ -235,28 +236,25 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
     ring["body_ids"] = np.unique(tets[labels == 1])
 
     # Lying flat, in its own rest pose: no rotation, so the mesh's +z is up and
-    # the body's lowest vertex is what rests it on the bench. The grasp is the
-    # body's own top, not the loop: lying down the loop is a limp hoop in a
-    # horizontal plane and a rim pinch of it hangs the toy canted (measured: 80 mm
-    # off the pads, and the body then rolls off the rim), while the head is a
-    # 40 mm-thick plush the pads can close on and hang the toy from, tail down.
+    # the body's lowest vertex is what rests it on the bench. The loop is a ring
+    # on a stem at the head's end, so lying down it floats at the body's
+    # mid-thickness, beyond the head, with its plane horizontal -- the pads close
+    # on its rim from either side at ``grip_z``.
     quat = (0.0, 0.0, 0.0, 1.0)
     hole = ring["hole_centre_local"]
     base = ring["base_local_y"]
-    body_vertices = vertices[np.unique(tets[labels == 1])]
-    head = body_vertices[body_vertices[:, 1] >= body_vertices[:, 1].max() - 0.030]
-    head_half_x = float(np.abs(head[:, 0]).max())
-    grip_y = 0.5 * (float(head[:, 1].min()) + float(head[:, 1].max()))
-    # Laid down so the head's centre is on the claw's own y: the toy hangs from
-    # the pinch with its tail below it, which is the pose the press was built
-    # around.
-    pose = (SOURCE_X, -grip_y, float(-vertices[:, 2].min()) + 0.001)
-    grip_z = float(pose[2] + head[:, 2].mean())
-    # How far the toy hangs below the pinch once it is off the bench: the head's
-    # centre to the tail's end. It is what the lift has to clear the rim by.
-    hang_drop = float(grip_y - vertices[:, 1].min())
+    # Laid down so the ring's hole sits on the claw's own y: the body lies behind
+    # it, and the toy is carried over the bore without a lateral detour.
+    pose = (SOURCE_X, float(-hole[1]), float(-vertices[:, 2].min()) + 0.001)
+    grip_z = float(pose[2] + hole[2])
+    # How far the toy hangs below the pinch once it is off the bench: the same
+    # 198 mm the standing start measures, because the body hangs from the loop
+    # either way. It is what the lift has to clear the rim by.
+    hole_height = float(hole[1] - base)
     # The tail is what goes in first, so it is the tail's own centre that gets
-    # carried over the container's axis.
+    # carried over the container's axis. Centring the hole instead leaves the
+    # tail 3.5 mm off-axis, and the tail's 47 by 36 mm section has 0.8 mm of
+    # diametral clearance in a 60 mm bore: it would be riding on the facet edge.
     tail_tets = np.where(labels == 0)[0]
     tail_vertices = vertices[np.unique(tets[tail_tets])]
     tail_centre = vertices[tets[tail_tets]].mean(axis=1).mean(axis=0)
@@ -266,14 +264,13 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         "hole_inradius_median_m": ring["hole_inradius_median"],
         "loop_reach_m": ring["side_reach"],
         "pad_half_thickness_m": PAD_HALF_THICKNESS,
-        "grip_squeeze_m": HEAD_SQUEEZE,
+        "grip_squeeze_m": GRIP_SQUEEZE,
         "toy_height_m": float(vertices[:, 1].max() - base),
-        "hang_drop_m": hang_drop,
-        # Where the jaws close and how wide the thing they close on is: the
-        # body's top band and its own half-width, not the loop.
+        "hole_height_m": hole_height,
+        # Where the jaws close and how wide the thing they close on is: the loop's
+        # own centre and its outer reach, as in Scene A. See the gripper's note.
         "grip_z_m": grip_z,
-        "grip_y_m": 0.0,
-        "grip_reach_m": head_half_x,
+        "grip_reach_m": ring["side_reach"],
         "pad_half_width_m": PAD_HALF_WIDTH,
         # The ledges gripper.py builds under each pad (2.4 mm tall, 3 mm inboard
         # of the pad's face): the grasp rests on them, so the run says so.
@@ -282,10 +279,7 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         "bore_radius_m": bore,
         "rim_z_m": RIM_Z,
         "floor_z_m": FLOOR_Z,
-        "lift_m": RIM_Z + LIFT_CLEARANCE + hang_drop - grip_z,
-        # The tail hangs under the pinch, so the carry is the distance between the
-        # two poses and nothing else.
-        "carry_m": TARGET_X - SOURCE_X,
+        "lift_m": RIM_Z + LIFT_CLEARANCE + hole_height - grip_z,
         "tail_centre_local": np.round(tail_centre, 4).tolist(),
         "tail_extent_m": np.round(np.ptp(tail_vertices, axis=0), 4).tolist(),
         "lower_m": APPROACH - LIFT_CLEARANCE,
@@ -394,13 +388,14 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
     )
     grip = scene.add(
         ParallelGripperSpec(
-            # The head's sides. The pads compress the plush and the toy hangs from
-            # the pinch, tail down. After the stall the body is pressed by the
-            # carrier, whose push budget is separate from the jaws' 5 N clamp.
+            # The loop's sides. The parallel jaws hold the pads' attitude, so the
+            # loop cannot roll them off; the flat face and its friction are the
+            # grip. After the stall the body is pressed by the carrier, whose
+            # push budget is separate from the jaws' 5 N closing clamp.
             name="bottle_loop_gripper",
-            center=(SOURCE_X + float(head[:, 0].mean()), 0.0, grip_z),
-            half_gap=head_half_x + PAD_HALF_THICKNESS + 0.006,
-            closed_half_gap=head_half_x + PAD_HALF_THICKNESS - HEAD_SQUEEZE,
+            center=(SOURCE_X + float(hole[0]), 0.0, grip_z),
+            half_gap=ring["side_reach"] + PAD_HALF_THICKNESS + 0.012,
+            closed_half_gap=ring["side_reach"] + PAD_HALF_THICKNESS - GRIP_SQUEEZE,
             pad_half_thickness=PAD_HALF_THICKNESS,
             pad_half_width=PAD_HALF_WIDTH,
             force_limit=cap,
@@ -414,10 +409,11 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
         name="overview",
         width=960,
         height=540,
-        # Pulled back 20% from the standing start's framing: the toy now lies 220 mm
-        # along y, toward the camera, instead of standing 220 mm up.
-        eye=(0.768, -0.576, 1.178),
-        look_at=(0.60, 0.0, 0.95),
+        # Framed for the lying start: the toy rests toward the camera, so the eye
+        # is pulled back from the standing framing and the view is aimed at the
+        # midpoint between the toy's rest and the bore.
+        eye=(0.782, -0.684, 1.197),
+        look_at=(0.60, -0.06, 0.93),
         fov_y=45.0,
     )
     scene.add(camera)
@@ -584,26 +580,28 @@ def chase_path(positions: np.ndarray, dt: float, body_centre: np.ndarray) -> np.
     return poses
 
 
-def press_path(positions: np.ndarray, dt: float) -> np.ndarray:
-    """From the contact pose: press straight down, hold, open while rising.
+def press_path(positions: np.ndarray, dt: float, body_min_z: float) -> np.ndarray:
+    """From the contact pose: press straight down, hold, open, then rise.
 
     The pads are already on the body's top at the release gap; one flat bottom
-each side of the loop. The descent runs PRESS_DEPTH below the pose they first
-touched the body at, no further than the container's floor, so the body is
-pressed where it is rather than for a fixed distance from the jam. The push
-clamp bounds the contact.
+    each side of the loop. The descent runs PRESS_DEPTH below the pose they first
+    touched the body at, and is bounded by the room the body itself has left above
+    the container's floor: a bound taken from the pads' own clearance drives them
+    through the plush after the toy has bottomed out (measured, h2: 85 mm of
+    travel, 8 mm of indentation below contact, 2.05 mm of wall penetration). The
+    push clamp bounds the contact.
     """
     positions = np.asarray(positions, dtype=np.float64)
     centre = 0.5 * (positions[0] + positions[1])
-    floor_bound = float(centre[2]) - (TABLE_Z + FLOOR_Z + PRESS_FLOOR_CLEARANCE)
-    travel = max(0.0, min(PRESS_DEPTH, floor_bound))
+    room = float(body_min_z) - (TABLE_Z + FLOOR_Z)
+    travel = max(0.0, min(PRESS_DEPTH, room))
     press_s = travel / PRESS_RATE
     hold_end = press_s + PRESS_HOLD
-    # Open while lifting: under the press the pads are loaded into the plush, and
-    # 5 N of jaw cannot slide out from under that normal on its own. The rise
-    # unloads it while the pads slide open.
+    # Open before rising: under the press the pads are loaded into the plush, and
+    # 5 N of jaw cannot slide out from under that normal on its own. Rising while
+    # opening dragged the toy back up with the pads (measured, h2: 26 mm).
     open_end = hold_end + JAM_OPEN
-    rise_end = hold_end + JAM_WITHDRAW
+    rise_end = open_end + JAM_WITHDRAW
     count = int(np.ceil(rise_end / dt)) + 2
     poses = np.zeros((count, 2, 7), dtype=np.float32)
     poses[:, :, 3:] = (0.0, 0.0, 0.0, 1.0)
@@ -611,7 +609,7 @@ clamp bounds the contact.
         time = index * dt
         gap = RELEASE_HALF_GAP + (OPENED_HALF_GAP - RELEASE_HALF_GAP) * smooth(time, hold_end, open_end)
         drop = -PRESS_RATE * min(time, press_s)
-        rise = WITHDRAW_Z * smooth(time, hold_end, rise_end)
+        rise = WITHDRAW_Z * smooth(time, open_end, rise_end)
         poses[index, 0, :3] = centre + np.array([-gap, 0.0, drop + rise])
         poses[index, 1, :3] = centre + np.array([gap, 0.0, drop + rise])
     return poses
@@ -904,7 +902,7 @@ def run(
                 body_contact_seen = True
                 press_frame = frame + 1
                 fingers = np.array([[body_q[b][0], body_q[b][1], body_q[b][2]] for b in grip.entity.bodies])
-                grip.entity.set_trajectory(press_path(fingers, dt))
+                grip.entity.set_trajectory(press_path(fingers, dt, row["minimum_z_m"]))
                 print(
                     json.dumps({"press_contact_frame": press_frame, "depth_m": depth_best}),
                     flush=True,

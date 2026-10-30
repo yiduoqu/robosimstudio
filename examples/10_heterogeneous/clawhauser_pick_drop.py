@@ -35,7 +35,9 @@ ASSET = Path(__file__).resolve().parent / "assets" / "clawhauser"
 OUTPUT = Path(__file__).resolve().parents[2] / "outputs" / "clawhauser_pick_drop"
 CONTROL_HZ = 30
 SUBSTEPS = 20
-DURATION = 9.0
+# 20 s: the phases below still end at 5.2 s, so the drop is unchanged and the
+# remaining 11 s is the toy at rest. That is the window a drift is measured in.
+DURATION = 20.0
 TABLE_Z = 0.75
 # The move: 80 mm along the bench, and a lift that takes the toy's own length
 # clear of the surface it is resting on. The toy hangs from the pinch with its
@@ -253,6 +255,27 @@ def judge(geometry: dict, diagnostics, quality, entity, steps: int) -> dict:
     tail = diagnostics[-round(0.5 * CONTROL_HZ) :]
     released = max(row["finger_contacts"] for row in tail) == 0
     clearance = float(min(row["minimum_z_m"] for row in tail) - TABLE_Z)
+    # Touch-down: the first frame after the pads let go whose lowest point is on
+    # the bench. Drift is measured from there, not from the release, because the
+    # fall itself is not drift.
+    landing = next(
+        (row for row in diagnostics if row["frame"] > held and row["minimum_z_m"] - TABLE_Z <= 0.002),
+        None,
+    )
+    landed_frame = None if landing is None else landing["frame"]
+    drift = None
+    if landing is not None:
+        drift = float(
+            np.linalg.norm(np.asarray(final["body_centre_m"][:2]) - np.asarray(landing["body_centre_m"][:2]))
+        )
+    # Mean speed of the centre over the last half second of the run.
+    span = min(len(diagnostics) - 1, round(0.5 * CONTROL_HZ))
+    rest_speed = 0.0
+    if span >= 1:
+        rest_speed = float(
+            np.linalg.norm(np.asarray(final["body_centre_m"]) - np.asarray(diagnostics[-1 - span]["body_centre_m"]))
+            / (final["time_s"] - diagnostics[-1 - span]["time_s"])
+        )
     max_finger_contacts = max(row["finger_contacts"] for row in diagnostics)
     quality_read = quality.read()
     inverted_substeps = sum(quality_read["inverted_tet_substeps_by_part"])
@@ -272,6 +295,9 @@ def judge(geometry: dict, diagnostics, quality, entity, steps: int) -> dict:
         "lifted_m": lifted,
         "moved_x_m": moved,
         "rolled_after_release_m": rolled,
+        "landed_frame": landed_frame,
+        "drift_after_landing_m": drift,
+        "rest_speed_m_s": rest_speed,
         "settled_clearance_m": clearance,
         "max_finger_contacts": max_finger_contacts,
         "max_inverted_tetrahedra": max_inverted,
@@ -299,13 +325,35 @@ def run(
     particles = entity.particles
     tets = entity.source_tets
     solver = sim.pipeline.program.solver
+    contacts = sim.pipeline.contacts
+    # Self-contact pairs are written by whichever detector the solver built. This
+    # scene drives detection from RSS, so the solver owns a tri-mesh detector and
+    # its pairs are NOT in ``contacts.soft_self_contact_data`` (allocated before
+    # the solver existed, and therefore without the struct). Read the buffer that
+    # is actually populated, and record which one it was.
+    pair_info, pair_buffer = None, "absent"
+    for name, info in (
+        ("solver.detector", getattr(solver, "trimesh_collision_info", None)),
+        ("solver.contacts", getattr(getattr(solver, "contacts", None), "soft_self_contact_data", None)),
+        ("pipeline.contacts", getattr(contacts, "soft_self_contact_data", None)),
+    ):
+        if info is not None:
+            pair_info, pair_buffer = info, name
+            break
     self_contact = {
         "enabled": bool(getattr(solver, "particle_enable_self_contact", False)),
         "margin_m": float(getattr(solver, "particle_self_contact_margin", 0.0)),
         "rest_exclusion_m": float(getattr(solver, "particle_rest_shape_contact_exclusion_radius", 0.0)),
+        "pair_buffer": pair_buffer,
     }
     if self_contact["enabled"] != enable_self_contact:
         raise RuntimeError("the solver's self-contact setting does not match the scene's")
+    if self_contact["enabled"] and pair_info is None:
+        raise RuntimeError("self-contact is on but no pair buffer was found; the counts would read zero")
+    # The block's own motion, cumulative since the last read: ``path_length`` is
+    # cleared with the substep budget, so reading it here would only see the
+    # last of the step's 20 substeps.
+    block = getattr(solver, "coarse_block", None)
     quality = MeshQuality(sim, entity)
     dt = 1.0 / (CONTROL_HZ * SUBSTEPS)
     q0 = sim.pipeline.state_0.particle_q.numpy()[particles]
@@ -335,13 +383,39 @@ def run(
             body_q = state.body_q.numpy()
             owned = q[particles]
             det = np.linalg.det(owned[tets[:, 1:]] - owned[tets[:, :1]])
-            contacts = sim.pipeline.contacts
             count = int(contacts.soft_contact_count.numpy()[0])
             contact_shapes = contacts.soft_contact_shape.numpy()[: min(count, contacts.soft_contact_max)]
             depth = penetration(q, body_q, sim.model, contacts)
             touching = depth > 0.0
             finger = np.isin(contact_shapes, jaw.entity.finger_shapes)
+            pairs, nearest = 0, None
+            if pair_info is not None:
+                # Counts record every detected pair, including a row that
+                # overflowed its capacity; ``min_dist`` only means something on
+                # rows that found one, and starts at zero everywhere else.
+                for counts, distances in (
+                    (
+                        pair_info.vertex_colliding_triangles_count.numpy(),
+                        pair_info.vertex_colliding_triangles_min_dist.numpy(),
+                    ),
+                    (
+                        pair_info.edge_colliding_edges_count.numpy(),
+                        pair_info.edge_colliding_edges_min_dist.numpy(),
+                    ),
+                ):
+                    pairs += int(counts.sum())
+                    hit = counts > 0
+                    if hit.any():
+                        found = float(distances[hit].min())
+                        nearest = found if nearest is None else min(nearest, found)
+            coarse_path = None
+            if block is not None:
+                coarse_path = float(block.step_path.numpy()[0])
+                block.step_path.zero_()
             row = {
+                "self_contact_pairs": pairs,
+                "self_contact_min_dist_m": nearest,
+                "coarse_path_m": coarse_path,
                 "frame": frame + 1,
                 "time_s": (frame + 1) / CONTROL_HZ,
                 "body_centre_m": owned.mean(axis=0).tolist(),

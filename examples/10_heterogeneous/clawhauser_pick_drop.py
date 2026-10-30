@@ -160,7 +160,6 @@ def build_scene(*, coarse: bool, self_contact: bool = True):
             materials_path=str(ASSET / "inferred_params.json"),
             pose=pose,
             quat=quat,
-            damping_time=0.0005,
             contact_ke=CONTACT_KE,
         )
     )

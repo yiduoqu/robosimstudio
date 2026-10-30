@@ -381,7 +381,6 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
             materials_path=str(ASSET / "inferred_params.json"),
             pose=pose,
             quat=quat,
-            damping_time=0.0005,
             contact_ke=CONTACT_KE,
         )
     )

@@ -64,10 +64,12 @@ PHASES = {
     # starting (measured, p3: the pads closed 20 mm behind the hoop and lifted
     # nothing).
     "close": (0.0, 0.6),
-    "lift": (0.6, 2.2),
-    "hang": (2.2, 3.0),
-    "carry": (3.0, 4.2),
-    "open": (4.8, 5.2),
+    # The pads hold still once they are closed: the toy settles onto the pinch
+    # before the lift loads it.
+    "lift": (1.1, 2.7),
+    "hang": (2.7, 3.5),
+    "carry": (3.5, 4.7),
+    "open": (5.3, 5.7),
 }
 """Planned phase windows. ``hang`` is a phase with no motion: the toy comes off
 the bench at an angle and swings to hang from the pinch before it is carried.

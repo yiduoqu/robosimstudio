@@ -69,7 +69,7 @@ ASSET = Path(__file__).resolve().parent / "assets" / "clawhauser"
 OUTPUT = Path(__file__).resolve().parents[2] / "outputs" / "clawhauser_stuff_into_bottle"
 CONTROL_HZ = 30
 SUBSTEPS = 20
-DURATION = 24.0
+DURATION = 24.5
 """Long enough for the grasp, the guarded descent that stalls on the rim, the
 release, and the press that follows the body to the container's floor, and for
 the open and withdraw to finish inside the run.
@@ -195,8 +195,10 @@ PHASES = {
     # stem with nothing under it, and it sags and rolls out of the jaws' reach
     # within half a second of the scene starting.
     "close": (0.0, 0.6),
-    "lift": (0.6, 4.6),
-    "hang": (4.6, 6.1),
+    # The pads hold still once they are closed: the toy settles onto the pinch
+    # before the lift loads it.
+    "lift": (1.1, 5.1),
+    "hang": (5.1, 6.6),
 }
 """The authored part of the path: close, lift, and a hang with no motion, where
 the toy comes off the bench and settles into hanging from the pinch. The hang is

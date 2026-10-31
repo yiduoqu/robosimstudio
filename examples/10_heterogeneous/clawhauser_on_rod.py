@@ -187,13 +187,15 @@ PHASES = {
     # allows: lying flat, the loop is a limp hoop and the toy slides across the
     # bench within half a second of the scene starting.
     "close": (0.0, 0.6),
-    "lift": (0.6, 2.2),
+    # The pads hold still once they are closed: the toy settles onto the pinch
+    # before the lift loads it.
+    "lift": (1.1, 2.7),
     # The pad is still while the toy swings upright under the pinch -- the same
     # beat the cup and pick-and-drop scenes take between lift and carry.
-    "thread": (3.0, 4.2),
-    "seat": (4.2, 7.2),
-    "open": (7.8, 8.3),
-    "withdraw": (8.3, 8.8),
+    "thread": (3.5, 4.7),
+    "seat": (4.7, 7.7),
+    "open": (8.3, 8.8),
+    "withdraw": (8.8, 9.3),
 }
 """Planned phase windows. The seat's own end is not one of them: the descent
 stops when the rod reports support, and ``SEAT_FLOOR`` bounds it if it does not.

@@ -31,7 +31,7 @@ motion was built on.
 
 Controls, for contrast rather than for the result:
 
-    --no-coarse        stock VBD: no common-translation solve under load
+    --coarse           run the coarse common-translation solve under load
 
 Knobs, each reported with its measured effect:
 
@@ -54,7 +54,7 @@ import newton
 import numpy as np
 from loop_geometry import ring_geometry, smooth
 from mesh_quality import MeshQuality, penetration
-from parallel_gripper import GRASP_LIMIT_N, ParallelGripperSpec
+from parallel_gripper import GRASP_LIMIT_N, ParallelGripperSpec, vbd_island
 
 import robosimstudio as rss
 from robosimstudio_materials.heterogeneous import HeterogeneousSoftSpec, load_labelled_tets
@@ -115,6 +115,17 @@ phase peaks at several times its mean, and the same catch at 100 mm/s was
 measured to push the loop back out of the pinch, while at 44 mm/s it survived.
 A constant 25 mm/s is under that everywhere, and the guard stops the ramp a few
 hundred milliseconds in anyway -- 11 mm of planned descent in total here.
+"""
+SETTLE_S = 0.8
+"""How long the toy is left alone before the claw closes [s].
+
+The plush is soft enough that its rest pose is 24 mm below its spawn pose once
+the particle solve actually converges: at this branch's 80 iterations the loop's
+centre falls from 0.7874 m to 0.7582 m and stops, while the arena the grasp was
+built on is the spawn pose. A grasp aimed there closed 30 mm above the loop --
+zero ``finger_contacts`` at every frame, the pads lifting with nothing between
+them, the toy still on the bench at the end. Eight tenths of a second is past
+the 0.5 s the settle takes.
 """
 OPENED_HALF_GAP = 0.045
 """How far apart the jaws open once the toy is on the rod."""
@@ -210,7 +221,15 @@ SOURCE_HASHES = {
 }
 
 
-def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | None = None, self_contact: bool = True):
+def build_scene(
+    *,
+    coarse: bool = False,
+    rod_radius: float = ROD_RADIUS,
+    mu: float | None = None,
+    self_contact: bool = True,
+    claw: str = "mujoco",
+    coupler: str = "admm",
+):
     for relative, expected in SOURCE_HASHES.items():
         actual = hashlib.sha256((ASSET / relative).read_bytes()).hexdigest()
         if actual != expected:
@@ -272,7 +291,7 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
     print(json.dumps({"geometry": geometry}), flush=True)
 
     common = {
-        "iterations": 12,
+        "iterations": 80,
         "particle_enable_self_contact": self_contact,
         # Millimetre-scale self-contact: the solver's own default margin is
         # 0.2 m, which makes every particle pair touch and the toy explode.
@@ -297,13 +316,24 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
             **common,
         )
         if coarse
-        else rss.backend("vbd", **common)
+        else rss.backend(
+            "robosimstudio_materials.chebyshev_acceleration.SolverVBDChebyshev",
+            chebyshev_rho=0.9,
+            chebyshev_collision_mask=True,
+            **common,
+        )
     )
+    # The claw on MuJoCo, the FEM on VBD: its pad contacts are MuJoCo's, not
+    # VBD's penalty contacts, and the two islands meet through the coupler.
+    claw_backend = rss.backend(claw)
+    # The claw shares VBD's island by default; only a split island needs a coupler.
+    split = claw != "vbd"
     physics = rss.ArrangementSpec(
         control_hz=CONTROL_HZ,
         substeps=SUBSTEPS,
         use_cuda_graph=False,
-        backends=(("soft", vbd), ("rigid", vbd), ("*", vbd)),
+        backends=(("soft", vbd), ("rigid", claw_backend if split else vbd), ("*", vbd)),
+        **({} if not split else {"coupling": rss.coupler(coupler, mode="staggered")}),
         collision=rss.CollisionSpec(
             soft_contact_margin=CONTACT_GAP,
             full_surface_contact=False,
@@ -367,8 +397,27 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
     )
     scene.add(camera)
     sim = scene.build(device="cuda:0", warmup=False, use_cuda_graph=False)
+    problems = sim.pipeline.program.problems()
+    if problems:
+        print(json.dumps({"problems": problems}), flush=True)
+    manifest = sim.pipeline.program.manifest
+    print(
+        json.dumps(
+            {
+                "coupler": manifest.coupler,
+                "islands": [
+                    {"name": i.name, "bodies": len(i.bodies), "shapes": len(i.shapes), "particles": len(i.particles)}
+                    for i in manifest.islands
+                ],
+                "channels": [
+                    {"from": c.source, "to": c.destination, "bodies": len(c.bodies)} for c in manifest.channels
+                ],
+            }
+        ),
+        flush=True,
+    )
     entity = obj.entity
-    if not type(sim.pipeline.program.solver).__name__.startswith("SolverVBD"):
+    if not type(vbd_island(sim.pipeline.program.solver)).__name__.startswith("SolverVBD"):
         raise RuntimeError(f"expected a VBD solver, got {type(sim.pipeline.program.solver).__name__}")
     if sim.model.tet_count != len(tets) or len(entity.tet_part_labels) != len(tets):
         raise RuntimeError("RSS lost Clawhauser tetrahedra or part labels")
@@ -386,7 +435,20 @@ def build_scene(*, coarse: bool, rod_radius: float = ROD_RADIUS, mu: float | Non
     return sim, obj, grip, camera, rod, ring, geometry
 
 
-def waypoints(grip, capacity: int, dt: float, geometry: dict) -> np.ndarray:
+def parked(grip, capacity: int) -> np.ndarray:
+    """The pads open and still where ``waypoints`` starts them: the toy's own settle."""
+    centre = np.asarray(grip.entity.center, dtype=np.float64)
+    opened = float(grip.spec.half_gap)
+    poses = np.zeros((capacity, 2, 7), dtype=np.float32)
+    poses[:, :, 6] = 1.0
+    poses[:, 0, :3] = centre + np.array([-opened, 0.0, 0.0])
+    poses[:, 1, :3] = centre + np.array([opened, 0.0, 0.0])
+    return poses
+
+
+def waypoints(
+    grip, capacity: int, dt: float, geometry: dict, *, centre: np.ndarray | None = None, closed_half_gap: float | None = None
+) -> np.ndarray:
     """The claw's own path: settle, close, lift, thread, seat, hold, open, withdraw.
 
     The descent runs to ``SEAT_FLOOR`` below the height where the hole meets the
@@ -394,9 +456,16 @@ def waypoints(grip, capacity: int, dt: float, geometry: dict) -> np.ndarray:
     holds there instead of driving the jaws through the toy. ``after_seat`` is
     what every working run follows instead.
     """
-    centre = np.asarray(grip.entity.center, dtype=np.float64)
+    # ``centre`` is where the loop is once it has settled, measured in the run.
+    # The spawn pose the scene was built on is 24-34 mm above it, and every aim
+    # that started from the mount instead of the measurement closed off the loop.
+    centre = np.asarray(grip.entity.center if centre is None else centre, dtype=np.float64)
     opened = float(grip.spec.half_gap)
-    closed = float(grip.spec.closed_half_gap)
+    # The squeeze is measured past the loop *as it stands*, not as it was built:
+    # the settled loop is wider than its spawn pose, and a gap carried over from
+    # the spawn width closed onto it with three grazing contacts, no pinch, and
+    # the toy left on the bench.
+    closed = float(grip.spec.closed_half_gap if closed_half_gap is None else closed_half_gap)
     lift = geometry["lift_m"]
     slide = geometry["slide_m"]
     seat = (TABLE_Z + geometry["seat_z_m"] - SEAT_FLOOR) - centre[2]
@@ -483,20 +552,23 @@ def run(
     *,
     steps: int,
     render_every: int = 0,
-    coarse: bool = True,
+    coarse: bool = False,
     rod_radius: float = ROD_RADIUS,
     mu: float | None = None,
-    enable_self_contact: bool = True,
+    enable_self_contact: bool = True,    claw: str = "mujoco",
+
+
+    coupler: str = "admm",
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     sim, obj, grip, camera, rod, ring, geometry = build_scene(
-        coarse=coarse, rod_radius=rod_radius, mu=mu, self_contact=enable_self_contact
+        coarse=coarse, rod_radius=rod_radius, mu=mu, self_contact=enable_self_contact, claw=claw, coupler=coupler
     )
     entity = obj.entity
     particles = entity.particles
     tets = entity.source_tets
     loop_ids = particles[ring["loop_ids"]]
-    solver = sim.pipeline.program.solver
+    solver = vbd_island(sim.pipeline.program.solver)
     self_contact = {
         "enabled": bool(getattr(solver, "particle_enable_self_contact", False)),
         "margin_m": float(getattr(solver, "particle_self_contact_margin", 0.0)),
@@ -507,8 +579,40 @@ def run(
     print(json.dumps({"self_contact": self_contact}), flush=True)
     quality = MeshQuality(sim, entity)
     dt = 1.0 / (CONTROL_HZ * SUBSTEPS)
-    grip.entity.set_trajectory(waypoints(grip, grip.entity.capacity, dt, geometry))
     q0 = sim.pipeline.state_0.particle_q.numpy()[particles]
+    # Let the toy settle, then aim the grasp at the loop it settled into: see
+    # SETTLE_S. The pre-roll is outside the reported frames, so every phase, time
+    # and guard frame below stays a frame of the trajectory that starts after it.
+    spawn_ring = q0[ring["loop_ids"]].mean(axis=0)
+    grip.entity.set_trajectory(parked(grip, grip.entity.capacity))
+    for _ in range(round(SETTLE_S * CONTROL_HZ)):
+        sim.run(1).sync()
+    settled = sim.pipeline.state_0.particle_q.numpy()[particles]
+    loop_rest = settled[ring["loop_ids"]]
+    settled_ring = loop_rest.mean(axis=0)
+    # Aim at the loop *as it settles*, in its own frame: the pads close at the
+    # centroid's height and squeeze past the loop's width there. Both earlier
+    # aims are wrong against this pose -- the spawn one left 30 mm of air between
+    # the pads and the loop, and the widest-band one put them on the rim where it
+    # lies on the bench: measured pads at z = 0.7503 against a band at 0.7531,
+    # three grazing contacts, 2e-5 N on the drive, and the toy never lifted.
+    band = np.abs(loop_rest[:, 2] - settled_ring[2]) <= PAD_HALF_THICKNESS
+    reach = float(np.max(np.abs(loop_rest[band, 0] - settled_ring[0])))
+    closed_gap = reach + PAD_HALF_THICKNESS - GRIP_SQUEEZE
+    print(
+        json.dumps(
+            {
+                "settle_drop_m": float(spawn_ring[2] - settled_ring[2]),
+                "settled_reach_m": reach,
+                "spawn_reach_m": float(geometry.get("side_reach_m", ring["side_reach"])),
+                "closed_half_gap_m": closed_gap,
+            }
+        ),
+        flush=True,
+    )
+    grip.entity.set_trajectory(
+        waypoints(grip, grip.entity.capacity, dt, geometry, centre=settled_ring, closed_half_gap=closed_gap)
+    )
     rest_det = np.linalg.det(q0[tets[:, 1:]] - q0[tets[:, :1]])
     if np.any(rest_det <= 0):
         raise RuntimeError("source tetrahedra were not positively oriented after build")
@@ -585,7 +689,7 @@ def run(
                 # where the fingers actually are.
                 seat_frame = frame + 1
                 fingers = np.array([[body_q[b][0], body_q[b][1], body_q[b][2]] for b in grip.entity.bodies])
-                grip.entity.set_trajectory(after_seat(fingers, dt, grip.spec.closed_half_gap))
+                grip.entity.set_trajectory(after_seat(fingers, dt, closed_gap))
                 print(json.dumps({"seat_frame": seat_frame, "rod_support_n": row["rod_support_n"]}), flush=True)
             row["applied"] = grip.entity.applied_wrenches.numpy().tolist()
             row["peak_force_n"] = grip.entity.peak_force.numpy().tolist()
@@ -678,10 +782,10 @@ def judge(out: Path, diagnostics, quality, geometry, sim, entity, steps, *, vide
     result = {
         "geometry": geometry,
         "self_contact": {
-            "enabled": bool(getattr(sim.pipeline.program.solver, "particle_enable_self_contact", False)),
-            "margin_m": float(getattr(sim.pipeline.program.solver, "particle_self_contact_margin", 0.0)),
+            "enabled": bool(getattr(vbd_island(sim.pipeline.program.solver), "particle_enable_self_contact", False)),
+            "margin_m": float(getattr(vbd_island(sim.pipeline.program.solver), "particle_self_contact_margin", 0.0)),
             "rest_exclusion_m": float(
-                getattr(sim.pipeline.program.solver, "particle_rest_shape_contact_exclusion_radius", 0.0)
+                getattr(vbd_island(sim.pipeline.program.solver), "particle_rest_shape_contact_exclusion_radius", 0.0)
             ),
         },
         "weight_n": weight,
@@ -738,7 +842,9 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=OUTPUT / "run")
     parser.add_argument("--steps", type=int, default=round(DURATION * CONTROL_HZ))
     parser.add_argument("--render-every", type=int, default=0)
-    parser.add_argument("--no-coarse", dest="coarse", action="store_false")
+    parser.add_argument("--coarse", dest="coarse", action="store_true", help="run the coarse common-translation solve")
+    parser.add_argument("--claw", default="mujoco", help="backend for the claw: mujoco gives it its own island")
+    parser.add_argument("--coupler", default="admm", help="island coupler: admm or proxy")
     parser.add_argument("--rod-radius", type=float, default=ROD_RADIUS, help="rod radius [m]")
     parser.add_argument("--mu", type=float, default=None, help="global soft-contact friction coefficient")
     parser.add_argument(
@@ -750,6 +856,8 @@ def main() -> None:
         steps=args.steps,
         render_every=args.render_every,
         coarse=args.coarse,
+        claw=args.claw,
+        coupler=args.coupler,
         rod_radius=args.rod_radius,
         mu=args.mu,
         enable_self_contact=args.self_contact,

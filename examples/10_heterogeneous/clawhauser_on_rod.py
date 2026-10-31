@@ -1,45 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Hang the labelled Clawhauser volume on a horizontal rod by its loop.
-
-The toy stands on the bench by its tail, loop up and the hole's axis horizontal
-along the rod. A two-finger claw pinches the loop's outer sides at the hole's own
-centre height -- narrow pads, no ledge, the hole left free -- lifts the toy until
-the rod's free end is inside the hole, slides it through, sets the toy down on the
-rod and lets go. What holds it then is the rod under the loop's inner surface:
-one rigid-soft contact patch carrying 1.227 N of toy.
-
-That height is not a convenience. It is the loop's widest point, and the only
-place on a closed loop where the outer surface faces the closing direction: a
-pad pushed at the arch above it meets a nearly horizontal surface, so the contact
-normals point up, the pads ride over the cord and the grasp is gone before the
-jaws lift -- measured, in the first build, as 224 finger contacts through the
-close then zero from the first lifted step with the toy's minimum z unmoved. And
-the pads aim a fixed interference past the measured width, so the squeeze is the
-drive's own clamp rather than whatever closing gap the loop's compliance leaves.
-
-Two things this scene is built to show. The rod and its post are rigid and never
-move, so nothing is scripted once the claw opens. And every jaw number is
-bounded: the two padded fingers slide on a level carrier under a 5 N jaw budget,
-and the carrier's 200 N push budget is separate. ``peak_force_n`` is the jaw peak;
-``peak_torque_nm`` is zero because a prismatic jaw cannot rotate.
-
-Geometry is derived from the mesh rather than hard-coded: the loop's hole centre
-and inner radius by an inscribed-circle fixed point over the loop's vertices, the
-loop's width in the closing direction from that same plane, and the rod's height
-from the hanging body's own reach. The printed ``geometry`` line is what the
-motion was built on.
-
-Controls, for contrast rather than for the result:
-
-    --coarse           run the coarse common-translation solve under load
-
-Knobs, each reported with its measured effect:
-
-    --rod-radius   radius of the rod the loop is threaded onto [m]
-    --mu           the pipeline's single global soft-contact friction coefficient
-
-Run on a CUDA node with Newton 1.8 development and RoboSimStudio on PYTHONPATH.
-"""
+"""Hang the labelled Clawhauser volume on a horizontal rod by its loop."""
 
 from __future__ import annotations
 
@@ -64,69 +24,17 @@ OUTPUT = Path(__file__).resolve().parents[2] / "outputs" / "clawhauser_on_rod"
 CONTROL_HZ = 30
 SUBSTEPS = 20
 DURATION = 9.5
-"""Long enough for the guarded seat to stop early or late and still leave the last
-half second still, so that the window the hang is judged on is a quiet one.
-"""
+"""Long enough for the guarded seat to stop early or late and still leave the last"""
 SEAT_TRIGGER = 0.95
-"""Fraction of the toy's weight the rod must carry before the descent stops.
-
-Nearly all of it, not half: half is reached by a loop lying across the rod's
-free end with the pinch still carrying the rest, and releasing there drops the
-toy -- measured at t = 5.33 s of the run that first stopped at half. The descent
-keeps going until the pinch is empty, which is the state in which opening the
-jaws does nothing at all.
-
-"
-
-The seat cannot be open-loop, and this is the measurement that says so. The
-loop sags towards the rod as soon as the claw's lift takes the toy's weight, so
-the hole reaches the rod *before* any nominal seat height does; a prescribed
-descent then keeps pushing the jaws down past a toy the rod is holding, and the
-loop slides up out of the 12 mm pad faces and the toy is dropped (measured: the
-loss at t = 5.2 s of a run whose lift and thread were clean). Descending until
-the rod reports support and stopping there is the move a real guarded move is.
-
-The signal is the *upward* part of the rod's contact force, not its magnitude. A
-loop grazing the rod's side reports a large penalty force -- 18.4 N was measured
-at 0.11 mm of penetration -- with no vertical component at all, so a magnitude
-would stop the descent on a graze.
-
-It also has to be sustained, not a single frame. A loop dragged across the rod's
-free end during the thread reports support for one or two frames -- measured 2.18 N
-at t = 4.4 s of the run that first used this guard -- and a guard that fired there
-would hold the toy while it was still only half threaded on.
-"""
+"""Fraction of the toy's weight the rod must carry before the descent stops."""
 SEAT_FRAMES = 3
 """Consecutive frames the rod must carry that fraction before the seat stops."""
 SEAT_FLOOR = 0.006
-"""How far past the nominal seat height the planned descent is allowed to go.
-
-A guard that never fires -- a failed grasp -- must not drive the jaws through
-the toy, so the planned path stops 6 mm below where the hole touches the rod and
-holds there. Six and not twelve now that the thread lifts the toy 5 mm rather
-than 30: the whole planned descent is then 11 mm, and its over-travel past a
-contact the guard somehow misses is the 6.
-"""
+"""How far past the nominal seat height the planned descent is allowed to go."""
 SEAT_RATE = 0.025
-"""How fast the planned descent goes [m/s]: a ramp, not a smoothstep.
-
-The catch is an impact whose severity is its speed. A smoothstep over the whole
-phase peaks at several times its mean, and the same catch at 100 mm/s was
-measured to push the loop back out of the pinch, while at 44 mm/s it survived.
-A constant 25 mm/s is under that everywhere, and the guard stops the ramp a few
-hundred milliseconds in anyway -- 11 mm of planned descent in total here.
-"""
+"""How fast the planned descent goes [m/s]: a ramp, not a smoothstep."""
 SETTLE_S = 0.8
-"""How long the toy is left alone before the claw closes [s].
-
-The plush is soft enough that its rest pose is 24 mm below its spawn pose once
-the particle solve actually converges: at this branch's 80 iterations the loop's
-centre falls from 0.7874 m to 0.7582 m and stops, while the arena the grasp was
-built on is the spawn pose. A grasp aimed there closed 30 mm above the loop --
-zero ``finger_contacts`` at every frame, the pads lifting with nothing between
-them, the toy still on the bench at the end. Eight tenths of a second is past
-the 0.5 s the settle takes.
-"""
+"""How long the toy is left alone before the claw closes [s]."""
 OPENED_HALF_GAP = 0.045
 """How far apart the jaws open once the toy is on the rod."""
 SEAT_HOLD = 1.0
@@ -136,11 +44,9 @@ SEAT_WITHDRAW = 0.5
 TABLE_Z = 0.75
 SOURCE_X = -0.13
 CONTACT_GAP = 0.02
-"""The collision pipeline's detection gap. The coarse block's own gap must be
-this: a correction can only reach contacts the pipeline stored."""
+"""The collision pipeline's detection gap. The coarse block's own gap must be"""
 CONTACT_KE = 100000.0
-"""The arrangement's rigid-soft penalty stiffness: support load is this times
-the summed penetration a contact patch reports."""
+"""The arrangement's rigid-soft penalty stiffness: support load is this times"""
 COARSE_BUDGET = 0.005
 """Cumulative coarse translation per substep, at most a quarter of the gap."""
 ROD_RADIUS = 0.006
@@ -152,42 +58,14 @@ CLEARANCE = 0.030
 """Space the hanging toy keeps under its lowest point [m]; the gate asks 20 mm."""
 THREAD_LIFT = 0.005
 RIM_HANG = 0.020
-"""How far the loop's centre sits below the pads when the toy dangles from a rim
-pinch [m], so the thread height is measured from the hole and not the pads.
-"""
-"""How far the hole's centre rides above its seated height while threading.
-
-The thread has to happen with the rod *inside* the hole. Raising the toy until
-the hole clears the rod's top by 20-30 mm does the opposite: the rod's free end
-then meets the loop's lower material instead of its hole, and the slide drags the
-loop along the rod's end until it is pulled out of the pinch -- measured 1.0-2.3 N
-on the rod through the thread, `finger_contacts` falling from 4 to 0 at t = 4.0 s,
-and the loop left draped across the free end with 12 mm of engagement where the
-path asks 42. At 5 mm the tip sits in the hole with 12.6 mm of room under it and
-5 mm over it, so the slide touches nothing and the guarded seat has 5 mm to fall.
-"""
+"""How far the loop's centre sits below the pads when the toy dangles from a rim"""
+"""How far the hole's centre rides above its seated height while threading."""
 WITHDRAW_Z = 0.060
-"""How far the opened jaws rise to clear the toy.
-
-Straight up, and it matters that it is not also sideways: a first build moved
-them 20 mm across while withdrawing, and because the toy is not yet on the rod
-at that moment the open jaws swept it with them -- measured as the loop's
-centroid travelling 75 mm in x and 34 mm up with the fingers, with nothing
-touching it but the pads (`finger_contacts` 3, the rod's 0.000 N) at the end of
-a run whose earlier frames had it threaded cleanly.
-"""
+"""How far the opened jaws rise to clear the toy."""
 PAD_HALF_THICKNESS = 0.003
 """The pad box's half-extent along the closing axis, as ``gripper.py`` builds it."""
 GRIP_SQUEEZE = 0.006
-"""How far past the loop's measured width the closed pads aim.
-
-Both ends of this were measured. At 1 mm the pads press about 1 N and the cord,
-which is round where they meet it, slides straight back out of the pinch on the
-first lifted step: five finger contacts through the close, none from the lift
-on, and the toy never left the bench, in three identical runs. At 6 mm the drive
-sits at its clamp and the grasp holds through lift, thread and seat -- the
-squeeze is a bounded 5 N, which is what that clamp is for.
-"""
+"""How far past the loop's measured width the closed pads aim."""
 # The seat is the slow one on purpose. Its descent is what brings the loop's
 # hole down onto the rod, and the catch is an impact: the guided ramp runs at a
 # constant 25 mm/s, whose momentum over one substep is about 1.9 N -- well under
@@ -208,11 +86,7 @@ PHASES = {
     "open": (8.3, 8.8),
     "withdraw": (8.8, 9.3),
 }
-"""Planned phase windows. The seat's own end is not one of them: the descent
-stops when the rod reports support, and ``SEAT_FLOOR`` bounds it if it does not.
-The open and withdraw windows are only the fallback's, for a run whose guard
-never fires; a working run gets its own ``after_seat`` path instead.
-"""
+"""Planned phase windows. The seat's own end is not one of them: the descent"""
 SOURCE_HASHES = {
     "final_mesh.mesh": "df3d1505d96d36fbfa76291e7ab94269a30500ba5e4b87516d0bf8f57f0c6458",
     "heterogeneous_params.npz": "7cfc8ca3cc7c08d261aa90b08832230801fec1ac62848d0e9239d9e2f318e8c6",
@@ -449,13 +323,7 @@ def parked(grip, capacity: int) -> np.ndarray:
 def waypoints(
     grip, capacity: int, dt: float, geometry: dict, *, centre: np.ndarray | None = None, closed_half_gap: float | None = None
 ) -> np.ndarray:
-    """The claw's own path: settle, close, lift, thread, seat, hold, open, withdraw.
-
-    The descent runs to ``SEAT_FLOOR`` below the height where the hole meets the
-    rod, not to that height: a run whose guard never fires -- a failed grasp --
-    holds there instead of driving the jaws through the toy. ``after_seat`` is
-    what every working run follows instead.
-    """
+    """The claw's own path: settle, close, lift, thread, seat, hold, open, withdraw."""
     # ``centre`` is where the loop is once it has settled, measured in the run.
     # The spawn pose the scene was built on is 24-34 mm above it, and every aim
     # that started from the mount instead of the measurement closed off the loop.
@@ -501,17 +369,7 @@ def waypoints(
 
 
 def after_seat(positions: np.ndarray, dt: float, closed_half_gap: float) -> np.ndarray:
-    """The path the guarded stop hands over to: hold, open, and rise clear.
-
-    Built from where the fingers actually are when the rod reports the toy, so
-    the hold is a hold and not a resumed descent -- but the *gap* it holds is the
-    one the trajectory was aiming at, not the gap the fingers are at. Commanding
-    the measured gap lets the squeeze go: the pads are pushed out of the loop's
-    own reaction, so aiming at where they already are asks for no force at all,
-    and the released loop slides straight out of the pinch. Measured: a run whose
-    loop was on the rod and carrying 0.87 N lost all finger contact in the frame
-    after that hand-over and dropped the toy at t = 5.2 s.
-    """
+    """The path the guarded stop hands over to: hold, open, and rise clear."""
     positions = np.asarray(positions, dtype=np.float64)
     count = int(np.ceil((SEAT_HOLD + SEAT_OPEN + SEAT_WITHDRAW) / dt)) + 2
     centre = 0.5 * (positions[0] + positions[1])

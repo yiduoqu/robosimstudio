@@ -225,6 +225,20 @@ jaws: a claw that can only pinch at 5 N can still push at 200 N, and neither
 clamp appears in the other's drive."""
 
 
+def vbd_island(solver):
+    """The VBD sub-solver when the claw is coupled out of it, else ``solver``.
+
+    A claw on its own island makes the pipeline's solver a ``SolverCoupled``; the
+    particles, their self-contact flags and their contact buffers still belong to
+    the VBD entry, so the scenes read those off that entry rather than the wrapper.
+    """
+    for name in getattr(solver, "entry_names", lambda: ())():
+        inner = solver.solver(name)
+        if type(inner).__name__.startswith("SolverVBD"):
+            return inner
+    return solver
+
+
 @dataclass(frozen=True, kw_only=True)
 class ParallelGripperSpec:
     entity: str = "parallel_loop_gripper"
@@ -445,6 +459,14 @@ class ParallelGripper(rss.Entity):
             self.finger_shapes.extend((pad, post))
             self.shapes_by_side.append((pad, post))
         builder.add_articulation(self.joints, label=f"{spec.name}_mechanism")
+
+    def coupling_bodies(self) -> list[int]:
+        """The fingers as the surfaces a deformable can feel, i.e. the ``hands`` role.
+
+        Without this the claw is a rigid island nothing may touch: the toy's
+        ``hands`` rule resolves to no node and the coupler gets no channel.
+        """
+        return list(self.bodies)
 
     def on_scene_ready(self, pipeline) -> None:
         self.pipeline = pipeline

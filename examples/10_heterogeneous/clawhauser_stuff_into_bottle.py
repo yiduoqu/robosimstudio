@@ -35,7 +35,7 @@ depth, so a sweep over bores is an argument rather than a different file.
 
 Control, for contrast rather than for the result:
 
-    --no-coarse        stock VBD: no common-translation solve under load
+    --coarse           run the coarse common-translation solve under load
 
 Knobs, each reported with its measured effect:
 
@@ -60,7 +60,7 @@ import newton
 import numpy as np
 from loop_geometry import ring_geometry, smooth
 from mesh_quality import MeshQuality, penetration
-from parallel_gripper import GRASP_LIMIT_N, PUSH_LIMIT_N, ParallelGripperSpec
+from parallel_gripper import GRASP_LIMIT_N, PUSH_LIMIT_N, ParallelGripperSpec, vbd_island
 
 import robosimstudio as rss
 from robosimstudio_materials.heterogeneous import HeterogeneousSoftSpec, load_labelled_tets
@@ -232,7 +232,17 @@ SOURCE_HASHES = {
 }
 
 
-def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: float | None, self_contact: bool = True):
+def build_scene(
+    *,
+    coarse: bool = False,
+    bore: float,
+    cap: float,
+    push_cap: float,
+    mu: float | None,
+    self_contact: bool = True,
+    claw: str = "vbd",
+    coupler: str = "admm",
+):
     for relative, expected in SOURCE_HASHES.items():
         actual = hashlib.sha256((ASSET / relative).read_bytes()).hexdigest()
         if actual != expected:
@@ -305,7 +315,7 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
     print(json.dumps({"geometry": geometry}), flush=True)
 
     common = {
-        "iterations": 12,
+        "iterations": 80,
         "particle_enable_self_contact": self_contact,
         # Millimetre-scale self-contact: the solver's own default margin is
         # 0.2 m, which makes every particle pair touch and the toy explode.
@@ -330,13 +340,24 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
             **common,
         )
         if coarse
-        else rss.backend("vbd", **common)
+        else rss.backend(
+            "robosimstudio_materials.chebyshev_acceleration.SolverVBDChebyshev",
+            chebyshev_rho=0.9,
+            chebyshev_collision_mask=True,
+            **common,
+        )
     )
+    # The claw on MuJoCo, the FEM on VBD: its pad contacts are MuJoCo's, not
+    # VBD's penalty contacts, and the two islands meet through the coupler.
+    claw_backend = rss.backend(claw)
+    # The claw shares VBD's island by default; only a split island needs a coupler.
+    split = claw != "vbd"
     physics = rss.ArrangementSpec(
         control_hz=CONTROL_HZ,
         substeps=SUBSTEPS,
         use_cuda_graph=False,
-        backends=(("soft", vbd), ("rigid", vbd), ("*", vbd)),
+        backends=(("soft", vbd), ("rigid", claw_backend if split else vbd), ("*", vbd)),
+        **({} if not split else {"coupling": rss.coupler(coupler, mode="staggered")}),
         collision=rss.CollisionSpec(
             soft_contact_margin=CONTACT_GAP,
             full_surface_contact=False,
@@ -430,7 +451,7 @@ def build_scene(*, coarse: bool, bore: float, cap: float, push_cap: float, mu: f
     scene.add(camera)
     sim = scene.build(device="cuda:0", warmup=False, use_cuda_graph=False)
     entity = obj.entity
-    if not type(sim.pipeline.program.solver).__name__.startswith("SolverVBD"):
+    if not type(vbd_island(sim.pipeline.program.solver)).__name__.startswith("SolverVBD"):
         raise RuntimeError(f"expected a VBD solver, got {type(sim.pipeline.program.solver).__name__}")
     if sim.model.tet_count != len(tets) or len(entity.tet_part_labels) != len(tets):
         raise RuntimeError("RSS lost Clawhauser tetrahedra or part labels")
@@ -638,16 +659,25 @@ def run(
     *,
     steps: int,
     render_every: int = 0,
-    coarse: bool = True,
+    coarse: bool = False,
     bore: float = BORE_RADIUS,
     cap: float = GRASP_LIMIT_N,
     push_cap: float = PUSH_LIMIT_N,
     mu: float | None = None,
     enable_self_contact: bool = True,
+    claw: str = "vbd",
+    coupler: str = "admm",
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     sim, obj, grip, camera, ring, glass_shapes, glass_bodies, geometry = build_scene(
-        coarse=coarse, bore=bore, cap=cap, push_cap=push_cap, mu=mu, self_contact=enable_self_contact
+        coarse=coarse,
+        bore=bore,
+        cap=cap,
+        push_cap=push_cap,
+        mu=mu,
+        self_contact=enable_self_contact,
+        claw=claw,
+        coupler=coupler,
     )
     entity = obj.entity
     particles = entity.particles
@@ -656,7 +686,7 @@ def run(
     # from a loop contact: the loop sits between the pads on the way down.
     part_of_particle = np.zeros(len(particles), dtype=np.int32)
     part_of_particle[tets] = entity.tet_part_labels[:, None]
-    solver = sim.pipeline.program.solver
+    solver = vbd_island(sim.pipeline.program.solver)
     self_contact = {
         "enabled": bool(getattr(solver, "particle_enable_self_contact", False)),
         "margin_m": float(getattr(solver, "particle_self_contact_margin", 0.0)),
@@ -1182,7 +1212,9 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=OUTPUT / "run")
     parser.add_argument("--steps", type=int, default=round(DURATION * CONTROL_HZ))
     parser.add_argument("--render-every", type=int, default=0)
-    parser.add_argument("--no-coarse", dest="coarse", action="store_false")
+    parser.add_argument("--coarse", dest="coarse", action="store_true", help="run the coarse common-translation solve")
+    parser.add_argument("--claw", default="vbd", help="backend for the claw: vbd shares the FEM's island")
+    parser.add_argument("--coupler", default="admm", help="island coupler: admm, proxy or one_way")
     parser.add_argument("--bore", type=float, default=BORE_RADIUS, help="container inner radius [m]")
     parser.add_argument("--cap", type=float, default=GRASP_LIMIT_N, help="jaw closing clamp [N]")
     parser.add_argument("--push-cap", type=float, default=PUSH_LIMIT_N, help="carrier push clamp [N]")
@@ -1196,6 +1228,8 @@ def main() -> None:
         steps=args.steps,
         render_every=args.render_every,
         coarse=args.coarse,
+        claw=args.claw,
+        coupler=args.coupler,
         bore=args.bore,
         cap=args.cap,
         push_cap=args.push_cap,

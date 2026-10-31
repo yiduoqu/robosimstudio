@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 from loop_geometry import ring_geometry, smooth
 from mesh_quality import MeshQuality, penetration
-from parallel_gripper import GRASP_LIMIT_N, ParallelGripperSpec
+from parallel_gripper import GRASP_LIMIT_N, ParallelGripperSpec, vbd_island
 
 import robosimstudio as rss
 from robosimstudio_materials.heterogeneous import HeterogeneousSoftSpec, load_labelled_tets
@@ -86,7 +86,7 @@ SOURCE_HASHES = {
 }
 
 
-def build_scene(*, coarse: bool, self_contact: bool = True):
+def build_scene(*, coarse: bool = False, self_contact: bool = True, claw: str = "vbd", coupler: str = "admm"):
     for relative, expected in SOURCE_HASHES.items():
         actual = hashlib.sha256((ASSET / relative).read_bytes()).hexdigest()
         if actual != expected:
@@ -128,7 +128,7 @@ def build_scene(*, coarse: bool, self_contact: bool = True):
     print(json.dumps({"geometry": geometry}), flush=True)
 
     common = {
-        "iterations": 12,
+        "iterations": 80,
         "particle_enable_self_contact": self_contact,
         "particle_self_contact_radius": 0.002,
         "particle_self_contact_margin": 0.002,
@@ -148,13 +148,24 @@ def build_scene(*, coarse: bool, self_contact: bool = True):
             **common,
         )
         if coarse
-        else rss.backend("vbd", **common)
+        else rss.backend(
+            "robosimstudio_materials.chebyshev_acceleration.SolverVBDChebyshev",
+            chebyshev_rho=0.9,
+            chebyshev_collision_mask=True,
+            **common,
+        )
     )
+    # The claw on MuJoCo, the FEM on VBD: its pad contacts are MuJoCo's, not
+    # VBD's penalty contacts, and the two islands meet through the coupler.
+    claw_backend = rss.backend(claw)
+    # The claw shares VBD's island by default; only a split island needs a coupler.
+    split = claw != "vbd"
     physics = rss.ArrangementSpec(
         control_hz=CONTROL_HZ,
         substeps=SUBSTEPS,
         use_cuda_graph=False,
-        backends=(("soft", vbd), ("rigid", vbd), ("*", vbd)),
+        backends=(("soft", vbd), ("rigid", claw_backend if split else vbd), ("*", vbd)),
+        **({} if not split else {"coupling": rss.coupler(coupler, mode="staggered")}),
         collision=rss.CollisionSpec(
             soft_contact_margin=CONTACT_GAP,
             full_surface_contact=False,
@@ -202,7 +213,7 @@ def build_scene(*, coarse: bool, self_contact: bool = True):
     camera = scene.add(camera_spec)
     sim = scene.build(device="cuda:0", warmup=False, use_cuda_graph=False)
     entity = obj.entity
-    if not type(sim.pipeline.program.solver).__name__.startswith("SolverVBD"):
+    if not type(vbd_island(sim.pipeline.program.solver)).__name__.startswith("SolverVBD"):
         raise RuntimeError(f"expected a VBD solver, got {type(sim.pipeline.program.solver).__name__}")
     if sim.model.tet_count != len(tets) or len(entity.tet_part_labels) != len(tets):
         raise RuntimeError("RSS lost Clawhauser tetrahedra or part labels")
@@ -327,14 +338,23 @@ def judge(geometry: dict, diagnostics, quality, entity, steps: int) -> dict:
 
 
 def run(
-    out: Path, *, steps: int, render_every: int = 0, coarse: bool = True, enable_self_contact: bool = True
+    out: Path,
+    *,
+    steps: int,
+    render_every: int = 0,
+    coarse: bool = False,
+    enable_self_contact: bool = True,
+    claw: str = "vbd",
+    coupler: str = "admm",
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    sim, obj, jaw, camera, geometry = build_scene(coarse=coarse, self_contact=enable_self_contact)
+    sim, obj, jaw, camera, geometry = build_scene(
+        coarse=coarse, self_contact=enable_self_contact, claw=claw, coupler=coupler
+    )
     entity = obj.entity
     particles = entity.particles
     tets = entity.source_tets
-    solver = sim.pipeline.program.solver
+    solver = vbd_island(sim.pipeline.program.solver)
     contacts = sim.pipeline.contacts
     # Self-contact pairs are written by whichever detector the solver built. This
     # scene drives detection from RSS, so the solver owns a tri-mesh detector and
@@ -467,7 +487,9 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=OUTPUT / "run")
     parser.add_argument("--steps", type=int, default=round(DURATION * CONTROL_HZ))
     parser.add_argument("--render-every", type=int, default=0)
-    parser.add_argument("--no-coarse", action="store_true", help="stock VBD, no common-translation solve")
+    parser.add_argument("--coarse", action="store_true", help="run the coarse common-translation solve")
+    parser.add_argument("--claw", default="vbd", help="backend for the claw: vbd shares the FEM's island")
+    parser.add_argument("--coupler", default="admm", help="island coupler: admm, proxy or one_way")
     parser.add_argument(
         "--no-self-contact", dest="self_contact", action="store_false", help="turn the toy's self-contact off"
     )
@@ -476,8 +498,10 @@ def main() -> None:
         args.out,
         steps=args.steps,
         render_every=args.render_every,
-        coarse=not args.no_coarse,
+        coarse=args.coarse,
         enable_self_contact=args.self_contact,
+        claw=args.claw,
+        coupler=args.coupler,
     )
 
 
